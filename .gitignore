@@ -1,0 +1,11 @@
+node_modules/
+out/
+*.vsix
+.vscode-test/
+
+# Python
+server/__pycache__/
+server/*.pyc
+server/.venv/
+server/venv/
+*.egg-info/

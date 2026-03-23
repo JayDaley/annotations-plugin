@@ -1,0 +1,76 @@
+{
+  "name": "annotations-plugin",
+  "displayName": "Annotations Plugin",
+  "description": "Annotate code with inline comments stored on a remote server",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "annotations.addAnnotation",
+        "title": "Add Annotation"
+      },
+      {
+        "command": "annotations.showAnnotations",
+        "title": "Show Annotations"
+      },
+      {
+        "command": "annotations.deleteAnnotation",
+        "title": "Delete Annotation"
+      },
+      {
+        "command": "annotations.configureServer",
+        "title": "Configure Annotation Server"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "annotations.addAnnotation",
+          "when": "editorHasSelection",
+          "group": "annotations"
+        },
+        {
+          "command": "annotations.showAnnotations",
+          "group": "annotations"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Annotations Plugin",
+      "properties": {
+        "annotationsPlugin.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:5000",
+          "description": "URL of the annotation server"
+        },
+        "annotationsPlugin.username": {
+          "type": "string",
+          "default": "",
+          "description": "Username for the annotation server"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "test": "node ./out/test/runTest.js",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.x",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.x",
+    "@typescript-eslint/parser": "^6.x",
+    "eslint": "^8.x",
+    "typescript": "^5.x"
+  }
+}
