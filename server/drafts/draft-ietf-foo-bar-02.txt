@@ -1,0 +1,367 @@
+Internet-Draft              draft-ietf-foo-bar-02                March 2026
+IETF FOO Working Group                                      J. Smith, Ed.
+Intended status: Standards Track                             Example Corp.
+Expires: September 2026                                       M. Johnson
+                                                           Widgets, Inc.
+                                                               R. Patel
+                                                          Protocols Ltd.
+
+
+              The FOO-BAR Application Session Protocol
+                       draft-ietf-foo-bar-02
+
+Abstract
+
+   This document specifies the FOO-BAR Application Session Protocol
+   (FBASP), a request-response protocol designed for efficient, reliable
+   exchange of structured data between endpoints in constrained network
+   environments.  FOO-BAR provides session multiplexing, flow control,
+   and message authentication over reliable transport connections such
+   as TCP or QUIC.  This revision addresses errata identified in
+   draft-ietf-foo-bar-01 and clarifies authentication requirements.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at https://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on 15 September 2026.
+
+Copyright Notice
+
+   Copyright (c) 2026 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents
+   (https://trustee.ietf.org/license-info) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+   include Revised BSD License text as described in Section 4.e of the
+   Trust Legal Provisions and are provided without warranty as described
+   in the Revised BSD License.
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . .   2
+   2.  Conventions and Definitions . . . . . . . . . . . . . . . .   3
+   3.  Protocol Overview . . . . . . . . . . . . . . . . . . . . .   4
+   4.  Message Format  . . . . . . . . . . . . . . . . . . . . . .   6
+   5.  Session Management  . . . . . . . . . . . . . . . . . . . .   9
+   6.  Security Considerations . . . . . . . . . . . . . . . . . .  12
+   7.  IANA Considerations . . . . . . . . . . . . . . . . . . . .  13
+   8.  References  . . . . . . . . . . . . . . . . . . . . . . . .  14
+   Authors' Addresses  . . . . . . . . . . . . . . . . . . . . . .  15
+
+1.  Introduction
+
+   Modern distributed systems require application-layer protocols that
+   can efficiently transfer structured data while maintaining strong
+   ordering and delivery guarantees.  Existing general-purpose protocols
+   such as HTTP/1.1 impose significant framing overhead and lack
+   built-in primitives for session-level flow control.
+
+   The FOO-BAR Application Session Protocol (FBASP) addresses these
+   limitations by providing a compact binary framing layer with explicit
+   session semantics.  Each FOO-BAR session carries a sequence of
+   request-response exchanges, with each request uniquely identified by
+   a Request-ID field.  Sessions are established over a reliable
+   transport connection; this specification does not define a transport-
+   layer protocol.
+
+   Version 02 of this specification introduces mandatory message
+   authentication codes (MACs) for all request and response messages,
+   replacing the optional HMAC extension defined in version 01.  The
+   MAC computation algorithm is described in Section 4.3.
+
+   This document is intended for implementors of FOO-BAR endpoints.
+   Operational guidance is outside the scope of this specification.
+
+1.1.  Motivation
+
+   The protocol was originally designed to support large-scale sensor
+   networks where bandwidth is limited and message round-trip times are
+   variable.  The design philosophy favours simplicity of implementation
+   over feature richness.  An implementation MUST be able to act as
+   either a client (request originator) or a server (request handler),
+   or both simultaneously.
+
+   Early deployments demonstrated that version 01 implementations
+   diverged significantly on authentication handling, causing
+   interoperability failures.  This revision makes authentication
+   mandatory and unambiguous.
+
+2.  Conventions and Definitions
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in
+   BCP 14 [RFC2119] [RFC8174] when, and only when, they appear in all
+   capitals, as shown here.
+
+   The following terms are used throughout this document:
+
+   Session:      A logical association between two FOO-BAR endpoints,
+                 established by completing the handshake procedure
+                 described in Section 3.2.
+
+   Request:      A message sent by the initiating endpoint to request
+                 an operation.  Each Request MUST be paired with exactly
+                 one Response.
+
+   Response:     A message sent by the responding endpoint to report the
+                 outcome of a Request.
+
+   Request-ID:   A 32-bit identifier assigned by the request originator,
+                 unique within a session for the lifetime of an
+                 outstanding request.
+
+   MAC:          Message Authentication Code, computed over the message
+                 header and payload using the negotiated algorithm.
+
+3.  Protocol Overview
+
+   FOO-BAR operates as a symmetric protocol: once a session is
+   established, either endpoint may originate requests.  Sessions are
+   established using a two-message handshake (HELLO / HELLO-ACK).
+
+3.1.  Connection Establishment
+
+   The initiating endpoint sends a HELLO message containing its
+   supported protocol versions, authentication capabilities, and a
+   randomly generated Session Nonce.  The responding endpoint selects
+   the highest mutually supported version and algorithm, generates its
+   own Session Nonce, and returns a HELLO-ACK.
+
+   The final Session Key is derived from both nonces using the Key
+   Derivation Function (KDF) specified in Section 4.3.  Both endpoints
+   derive the same key independently.
+
+3.2.  Session Lifecycle
+
+   A session progresses through the following states:
+
+   CONNECTING:   HELLO sent; awaiting HELLO-ACK.
+   ESTABLISHED:  Handshake complete; request-response exchanges active.
+   CLOSING:      FIN sent or received; no new requests accepted.
+   CLOSED:       Session fully terminated; resources released.
+
+   Transitions between states are triggered by message receipt or
+   by timer expiry as described in Section 5.
+
+3.3.  Request-Response Exchange
+
+   Flow control is fundamental to the FOO-BAR protocol design.  A
+   sender MUST NOT transmit more than one outstanding request per
+   session without receiving a response.  This restriction ensures
+   that session state remains consistent at both endpoints.
+
+   The responding endpoint MUST echo the Request-ID from the
+   corresponding request in every Response message.  A Response
+   with an unrecognised Request-ID MUST be silently discarded.
+
+4.  Message Format
+
+   All FOO-BAR messages share a common fixed-size header followed by a
+   variable-length payload.  All integer fields are encoded in network
+   byte order (big-endian).
+
+4.1.  Fixed Header
+
+   The fixed header consists of the following fields: Version (1 octet),
+   Type (1 octet), Length (2 octets).  The Version field MUST be set to
+   0x02 for all messages conforming to this specification.  Messages
+   with unrecognized Version values MUST be silently discarded.
+
+   The Type field identifies the message type.  Defined values are:
+
+   Type  0x01   HELLO
+   Type  0x02   HELLO-ACK
+   Type  0x03   REQUEST
+   Type  0x04   RESPONSE
+   Type  0x05   KEEPALIVE
+   Type  0x06   KEEPALIVE-ACK
+   Type  0x07   FIN
+   Type  0x08   ERROR
+
+   The Length field specifies the total length of the message in octets,
+   including the fixed header.  The minimum valid Length is 4 (header
+   only).  Implementations MUST reject messages where the stated Length
+   exceeds the number of octets available in the receive buffer.
+
+4.2.  REQUEST Message
+
+   The REQUEST message carries an application-layer payload from the
+   initiating endpoint to the responding endpoint.
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |  Version=0x02 |  Type=0x03    |            Length             |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                          Request-ID                           |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |  Method       |   Reserved    |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                     Payload (variable)                        ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   |                  MAC (16 octets)                              |
+   |                                                               |
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+4.3.  Message Authentication Code
+
+   Every REQUEST and RESPONSE message MUST include a 16-octet MAC
+   computed over the concatenation of: the full message header, the
+   payload, and the current session sequence counter (8 octets,
+   big-endian).  The MAC is appended after the payload.
+
+   The MAC algorithm negotiated during the handshake MUST be one of:
+
+   MAC-HMAC-SHA256   HMAC-SHA-256 truncated to 16 octets
+   MAC-HMAC-SHA384   HMAC-SHA-384 truncated to 16 octets
+
+   Implementations MUST reject any message whose MAC verification fails.
+
+4.4.  KEEPALIVE Message
+
+   The KEEPALIVE message has no payload beyond the fixed header.
+   It MUST be sent at regular intervals to prevent session timeout.
+   See Section 5.3 for timing requirements.
+
+5.  Session Management
+
+5.1.  Handshake Procedure
+
+   The handshake proceeds as follows:
+
+   1. The initiating endpoint selects a random 128-bit Session Nonce
+      and sends a HELLO message containing this nonce along with its
+      supported Version list and MAC algorithm list.
+
+   2. The responding endpoint selects the highest mutually supported
+      Version and the preferred MAC algorithm.  It generates its own
+      random 128-bit Session Nonce and sends HELLO-ACK.
+
+   3. Both endpoints derive the Session Key:
+         SessionKey = KDF(NonceA || NonceB, "FOO-BAR session key")
+      where NonceA is the initiator's nonce and NonceB is the
+      responder's nonce.
+
+   4. Subsequent messages are authenticated using the Session Key.
+
+5.2.  Request Sequencing
+
+   Each request originates with a Request-ID chosen by the sender.
+   Request-IDs MUST be unique per session for the duration of the
+   session.  Implementations SHOULD use a monotonically increasing
+   counter starting at 1 as the source of Request-IDs.
+
+5.3.  Keepalive Processing
+
+   To detect silent failures, each endpoint MUST send a KEEPALIVE
+   message if no other message has been sent for more than 15 seconds.
+   A session SHOULD be considered stale if no message of any type has
+   been received for 45 seconds.  Implementations MUST send a FIN
+   message before treating the session as CLOSED.
+
+5.4.  Session Termination
+
+   Either endpoint may initiate session termination by sending a FIN
+   message.  Upon receiving a FIN, the peer MUST respond with a FIN-ACK
+   and cease sending new requests.  Pending responses to in-flight
+   requests SHOULD be delivered before the session is fully closed.
+
+   Abnormal termination (connection reset by the transport layer) MUST
+   be treated as an implicit FIN.  Resources associated with the session
+   MUST be released within 60 seconds of abnormal termination.
+
+6.  Security Considerations
+
+   FOO-BAR sessions are protected by a mandatory message authentication
+   code that provides integrity and replay protection.  However, FOO-BAR
+   does not itself provide confidentiality; implementations SHOULD run
+   over TLS 1.3 [RFC8446] or a equivalent transport-layer security
+   mechanism.
+
+   The Session Nonce used in key derivation MUST be generated by a
+   cryptographically secure pseudorandom number generator (CSPRNG).
+   Predictable or low-entropy nonces allow an attacker to reconstruct
+   the session key and forge messages.
+
+   Implementations MUST enforce a maximum session lifetime of 24 hours,
+   after which the session MUST be closed and a new handshake performed.
+
+   Denial-of-service considerations: an endpoint that receives a large
+   number of connection attempts SHOULD impose rate limits on HELLO
+   message processing to prevent resource exhaustion.
+
+7.  IANA Considerations
+
+   This document requests IANA to establish a registry named "FOO-BAR
+   Message Types" under the "FOO-BAR Protocol" registry group.  Initial
+   registrations are as specified in Section 4.1.
+
+   This document further requests registration of the following service
+   name and port number:
+
+   Service name:   foo-bar
+   Transport:      TCP, UDP
+   Port:           4242
+   Description:    FOO-BAR Application Session Protocol
+
+8.  References
+
+8.1.  Normative References
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119, March 1997.
+
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
+              2119 Key Words", BCP 14, RFC 8174, May 2017.
+
+   [RFC8446]  Rescorla, E., "The Transport Layer Security (TLS) Protocol
+              Version 1.3", RFC 8446, August 2018.
+
+8.2.  Informative References
+
+   [RFC9000]  Iyengar, J., Ed. and M. Thomson, Ed., "QUIC: A UDP-Based
+              Multiplexed and Secure Transport", RFC 9000, May 2021.
+
+Authors' Addresses
+
+   Jane Smith (editor)
+   Example Corp.
+   123 Protocol Way
+   San Francisco, CA 94105
+   United States of America
+   Email: jsmith@example.com
+
+   Michael Johnson
+   Widgets, Inc.
+   456 Standards Ave
+   Cambridge, MA 02139
+   United States of America
+   Email: mjohnson@widgets-inc.example
+
+   Ravi Patel
+   Protocols Ltd.
+   1 RFC Road
+   London, EC1A 1AA
+   United Kingdom
+   Email: rpatel@protocols-ltd.example

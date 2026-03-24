@@ -1,0 +1,432 @@
+Internet-Draft              draft-ietf-foo-bar-03                March 2026
+IETF FOO Working Group                                      J. Smith, Ed.
+Intended status: Standards Track                             Example Corp.
+Expires: September 2026                                       M. Johnson
+                                                           Widgets, Inc.
+                                                               R. Patel
+                                                          Protocols Ltd.
+
+
+              The FOO-BAR Application Session Protocol
+                       draft-ietf-foo-bar-03
+
+Abstract
+
+   This document specifies the FOO-BAR Application Session Protocol
+   (FBASP), a request-response protocol designed for efficient, reliable
+   exchange of structured data between endpoints in constrained network
+   environments.  FOO-BAR provides session multiplexing, flow control,
+   and message authentication over reliable transport connections such
+   as TCP or QUIC.  This revision (03) introduces a mandatory Nonce
+   field in all authenticated messages, clarifies keepalive timing
+   requirements, and resolves ambiguities reported against draft-02.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at https://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on 15 September 2026.
+
+Copyright Notice
+
+   Copyright (c) 2026 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents
+   (https://trustee.ietf.org/license-info) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+   include Revised BSD License text as described in Section 4.e of the
+   Trust Legal Provisions and are provided without warranty as described
+   in the Revised BSD License.
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . .   2
+   2.  Conventions and Definitions . . . . . . . . . . . . . . . .   3
+   3.  Protocol Overview . . . . . . . . . . . . . . . . . . . . .   4
+   4.  Message Format  . . . . . . . . . . . . . . . . . . . . . .   6
+   5.  Session Management  . . . . . . . . . . . . . . . . . . . .  10
+   6.  Security Considerations . . . . . . . . . . . . . . . . . .  13
+   7.  IANA Considerations . . . . . . . . . . . . . . . . . . . .  14
+   8.  References  . . . . . . . . . . . . . . . . . . . . . . . .  15
+   Authors' Addresses  . . . . . . . . . . . . . . . . . . . . . .  16
+
+1.  Introduction
+
+   Modern distributed systems require application-layer protocols that
+   can efficiently transfer structured data while maintaining strong
+   ordering and delivery guarantees.  Existing general-purpose protocols
+   such as HTTP/1.1 impose significant framing overhead and lack
+   built-in primitives for session-level flow control.
+
+   The FOO-BAR Application Session Protocol (FBASP) addresses these
+   limitations by providing a compact binary framing layer with explicit
+   session semantics.  Each FOO-BAR session carries a sequence of
+   request-response exchanges, with each request uniquely identified by
+   a Request-ID field.  Sessions are established over a reliable
+   transport connection; this specification does not define a transport-
+   layer protocol.
+
+   Version 03 of this specification makes two substantive changes from
+   version 02:
+
+   1. A per-message Nonce field is now mandatory in all REQUEST and
+      RESPONSE messages.  This replaces the optional Nonce extension
+      defined in draft-02 Appendix A, and provides stronger replay
+      protection without requiring stateful sequence counters.
+
+   2. Keepalive timing requirements have been tightened.  The previous
+      specification left the session timeout value implementation-
+      defined; this revision specifies a mandatory 30-second timeout
+      to improve interoperability.
+
+1.1.  Motivation
+
+   The protocol was originally designed to support large-scale sensor
+   networks where bandwidth is limited and message round-trip times are
+   variable.  The design philosophy favours simplicity of implementation
+   over feature richness.  An implementation MUST be able to act as
+   either a client (request originator) or a server (request handler),
+   or both simultaneously.
+
+   Feedback from early implementors of draft-02 highlighted two
+   interoperability problems: (a) replay attacks were possible when
+   implementations omitted the optional Nonce field, and (b) differing
+   keepalive timeout values caused premature session termination in
+   mixed-vendor deployments.  Both issues are addressed in this draft.
+
+2.  Conventions and Definitions
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in
+   BCP 14 [RFC2119] [RFC8174] when, and only when, they appear in all
+   capitals, as shown here.
+
+   The following terms are used throughout this document:
+
+   Session:      A logical association between two FOO-BAR endpoints,
+                 established by completing the handshake procedure
+                 described in Section 3.2.
+
+   Request:      A message sent by the initiating endpoint to request
+                 an operation.  Each Request MUST be paired with exactly
+                 one Response.
+
+   Response:     A message sent by the responding endpoint to report the
+                 outcome of a Request.
+
+   Request-ID:   A 32-bit identifier assigned by the request originator,
+                 unique within a session for the lifetime of an
+                 outstanding request.
+
+   Nonce:        A 16-octet cryptographically random value included in
+                 each authenticated message to prevent replay attacks.
+
+   MAC:          Message Authentication Code, computed over the message
+                 header, Nonce, and payload using the negotiated algorithm.
+
+3.  Protocol Overview
+
+   FOO-BAR operates as a symmetric protocol: once a session is
+   established, either endpoint may originate requests.  Sessions are
+   established using a two-message handshake (HELLO / HELLO-ACK).
+
+3.1.  Connection Establishment
+
+   The initiating endpoint sends a HELLO message containing its
+   supported protocol versions, authentication capabilities, and a
+   randomly generated Session Nonce.  The responding endpoint selects
+   the highest mutually supported version and algorithm, generates its
+   own Session Nonce, and returns a HELLO-ACK.
+
+   The final Session Key is derived from both nonces using the Key
+   Derivation Function (KDF) specified in Section 4.3.  Both endpoints
+   derive the same key independently.
+
+3.2.  Session Lifecycle
+
+   A session progresses through the following states:
+
+   CONNECTING:   HELLO sent; awaiting HELLO-ACK.
+   ESTABLISHED:  Handshake complete; request-response exchanges active.
+   CLOSING:      FIN sent or received; no new requests accepted.
+   CLOSED:       Session fully terminated; resources released.
+
+   Transitions between states are triggered by message receipt or
+   by timer expiry as described in Section 5.
+
+3.3.  Request-Response Exchange
+
+   A sender MUST NOT transmit more than one outstanding request per
+   session without receiving a response, unless session-level pipelining
+   has been explicitly negotiated during the HELLO exchange.  When
+   pipelining is active, a sender MAY have up to 16 outstanding requests.
+
+   The responding endpoint MUST echo the Request-ID from the
+   corresponding request in every Response message.  A Response with an
+   unrecognised Request-ID MUST be silently discarded.
+
+4.  Message Format
+
+   All FOO-BAR messages share a common fixed-size header followed by a
+   variable-length payload.  All integer fields are encoded in network
+   byte order (big-endian).
+
+4.1.  Fixed Header
+
+   The fixed header consists of the following fields: Version (1 octet),
+   Type (1 octet), Length (2 octets).  The Version field MUST be set to
+   0x03 for all messages conforming to this specification.  Messages
+   with unrecognized Version values MUST be silently discarded.
+
+   The Type field identifies the message type.  Defined values are:
+
+   Type  0x01   HELLO
+   Type  0x02   HELLO-ACK
+   Type  0x03   REQUEST
+   Type  0x04   RESPONSE
+   Type  0x05   KEEPALIVE
+   Type  0x06   KEEPALIVE-ACK
+   Type  0x07   FIN
+   Type  0x08   FIN-ACK
+   Type  0x09   ERROR
+
+   The Length field specifies the total length of the message in octets,
+   including the fixed header.  The minimum valid Length is 4 (header
+   only).  Implementations MUST reject messages where the stated Length
+   exceeds the number of octets available in the receive buffer.
+
+4.2.  Nonce Field
+
+   Each REQUEST and RESPONSE message MUST include a Nonce field
+   immediately following the fixed header.  The Nonce is a randomly
+   generated value used in MAC computation.  If the Nonce field is
+   present, it MUST be included in the Message Authentication Code
+   calculation.  Implementations MUST reject messages where the Nonce
+   field is not exactly 16 octets in length.  A receiver that detects
+   a malformed Nonce MUST send an Error response.
+
+   The Nonce MUST be generated fresh for each message using a
+   cryptographically secure pseudorandom number generator.  Nonce reuse
+   within a session is a protocol error and the session MUST be
+   terminated immediately upon detection.
+
+4.3.  REQUEST Message
+
+   The REQUEST message carries an application-layer payload from the
+   initiating endpoint to the responding endpoint.
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |  Version=0x03 |  Type=0x03    |            Length             |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                          Request-ID                           |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   |                    Nonce (16 octets)                          |
+   |                                                               |
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |  Method       |   Reserved    |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                     Payload (variable)                        ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   |                  MAC (16 octets)                              |
+   |                                                               |
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+4.4.  Message Authentication Code
+
+   Every REQUEST and RESPONSE message MUST include a 16-octet MAC
+   computed over the concatenation of: the full message header, the
+   Nonce field, the payload, and the message sequence counter (8 octets,
+   big-endian).  The MAC is appended after the payload.
+
+   The MAC algorithm negotiated during the handshake MUST be one of:
+
+   MAC-HMAC-SHA256   HMAC-SHA-256 truncated to 16 octets
+   MAC-HMAC-SHA384   HMAC-SHA-384 truncated to 16 octets
+
+   Implementations MUST reject any message whose MAC verification fails.
+
+4.5.  KEEPALIVE Message
+
+   The KEEPALIVE message has no payload beyond the fixed header.
+   It MUST be sent at regular intervals to prevent session timeout.
+   See Section 5.3 for timing requirements.
+
+5.  Session Management
+
+5.1.  Handshake Procedure
+
+   The handshake proceeds as follows:
+
+   1. The initiating endpoint selects a random 128-bit Session Nonce
+      and sends a HELLO message containing this nonce along with its
+      supported Version list and MAC algorithm list.
+
+   2. The responding endpoint selects the highest mutually supported
+      Version and the preferred MAC algorithm.  It generates its own
+      random 128-bit Session Nonce and sends HELLO-ACK.
+
+   3. Both endpoints derive the Session Key:
+         SessionKey = KDF(NonceA || NonceB, "FOO-BAR session key v3")
+      where NonceA is the initiator's nonce and NonceB is the
+      responder's nonce.
+
+   4. Subsequent messages include per-message Nonces and are
+      authenticated using the Session Key.
+
+5.2.  Request Sequencing
+
+   Each request originates with a Request-ID chosen by the sender.
+   Request-IDs MUST be unique per session for the duration of the
+   session.  Implementations SHOULD use a monotonically increasing
+   counter starting at 1 as the source of Request-IDs.
+
+5.3.  Keepalive Processing
+
+   Keepalive processing is described in this section.  A session MUST
+   be terminated if no KEEPALIVE message is received within 30 seconds
+   of the last successful exchange.  Implementations MAY reduce this
+   timer in high-throughput environments.
+
+   To ensure the peer has an opportunity to send keepalives, an
+   endpoint MUST send a KEEPALIVE message if no other message has been
+   sent for more than 10 seconds.  Upon receiving a KEEPALIVE, the
+   endpoint MUST respond with a KEEPALIVE-ACK within 5 seconds.
+
+   Failure to receive a KEEPALIVE-ACK within 5 seconds of sending a
+   KEEPALIVE MUST be treated as a session failure.  The endpoint MUST
+   send an ERROR message and transition to CLOSED state.
+
+5.4.  Session Termination
+
+   Either endpoint may initiate session termination by sending a FIN
+   message.  Upon receiving a FIN, the peer MUST respond with a FIN-ACK
+   and cease sending new requests.  Pending responses to in-flight
+   requests SHOULD be delivered before the session is fully closed.
+
+   Abnormal termination (connection reset by the transport layer) MUST
+   be treated as an implicit FIN.  Resources associated with the session
+   MUST be released within 60 seconds of abnormal termination.
+
+5.5.  Error Handling
+
+   When an endpoint detects a protocol violation, it SHOULD send an
+   ERROR message identifying the error code before closing the session.
+   ERROR messages MUST NOT be sent in response to ERROR messages.
+   An endpoint that receives an ERROR message MUST transition to CLOSED
+   state and MUST NOT send further application messages.
+
+   Error codes are defined in the IANA registry established by
+   Section 7.  Error code 0x01 ("Protocol Error") is used for generic
+   protocol violations.  Error code 0x02 ("Authentication Failure") is
+   used when MAC verification fails.  Error code 0x03 ("Nonce Error")
+   is used specifically for malformed or reused Nonce values.
+
+6.  Security Considerations
+
+   FOO-BAR sessions are protected by a mandatory message authentication
+   code that provides integrity and replay protection.  However, FOO-BAR
+   does not itself provide confidentiality; implementations SHOULD run
+   over TLS 1.3 [RFC8446] or an equivalent transport-layer security
+   mechanism.
+
+   The per-message Nonce introduced in this revision provides protection
+   against replay attacks even when the underlying transport does not
+   guarantee message ordering.  The Nonce MUST be generated using a
+   CSPRNG; a weak or predictable Nonce allows an attacker to break the
+   replay protection.
+
+   Implementations MUST enforce a maximum session lifetime of 24 hours,
+   after which the session MUST be closed and a new handshake performed.
+
+   Denial-of-service considerations: an endpoint that receives a large
+   number of connection attempts SHOULD impose rate limits on HELLO
+   message processing to prevent resource exhaustion.
+
+   Implementors should be aware that the 30-second keepalive timeout
+   specified in Section 5.3 may interact poorly with network middleboxes
+   that impose their own, shorter idle timeouts.  In such environments,
+   operators SHOULD configure FOO-BAR endpoints to send keepalives more
+   frequently.
+
+7.  IANA Considerations
+
+   This document requests IANA to establish a registry named "FOO-BAR
+   Message Types" under the "FOO-BAR Protocol" registry group.  Initial
+   registrations are as specified in Section 4.1.
+
+   This document further requests IANA to establish a registry named
+   "FOO-BAR Error Codes" with the initial registrations as specified in
+   Section 5.5.
+
+   This document further requests registration of the following service
+   name and port number:
+
+   Service name:   foo-bar
+   Transport:      TCP, UDP
+   Port:           4242
+   Description:    FOO-BAR Application Session Protocol
+
+8.  References
+
+8.1.  Normative References
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119, March 1997.
+
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
+              2119 Key Words", BCP 14, RFC 8174, May 2017.
+
+   [RFC8446]  Rescorla, E., "The Transport Layer Security (TLS) Protocol
+              Version 1.3", RFC 8446, August 2018.
+
+8.2.  Informative References
+
+   [RFC9000]  Iyengar, J., Ed. and M. Thomson, Ed., "QUIC: A UDP-Based
+              Multiplexed and Secure Transport", RFC 9000, May 2021.
+
+Authors' Addresses
+
+   Jane Smith (editor)
+   Example Corp.
+   123 Protocol Way
+   San Francisco, CA 94105
+   United States of America
+   Email: jsmith@example.com
+
+   Michael Johnson
+   Widgets, Inc.
+   456 Standards Ave
+   Cambridge, MA 02139
+   United States of America
+   Email: mjohnson@widgets-inc.example
+
+   Ravi Patel
+   Protocols Ltd.
+   1 RFC Road
+   London, EC1A 1AA
+   United Kingdom
+   Email: rpatel@protocols-ltd.example

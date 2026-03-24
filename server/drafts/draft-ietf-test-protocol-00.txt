@@ -1,0 +1,411 @@
+Internet-Draft          draft-ietf-test-protocol-00              March 2026
+IETF TESTPROTO Working Group                                 A. Lee, Ed.
+Intended status: Experimental                              Research Univ.
+Expires: September 2026                                       C. Nguyen
+                                                         Open Standards.
+                                                               D. Kumar
+                                                             NetLab Inc.
+
+
+        The IETF Test Protocol for Conformance Verification
+                   draft-ietf-test-protocol-00
+
+Abstract
+
+   This document specifies the IETF Test Protocol (ITP), a lightweight
+   application-layer protocol designed to facilitate automated
+   conformance testing of protocol implementations.  ITP provides a
+   standardised mechanism for a test controller to instruct a system
+   under test (SUT) to perform specific protocol operations, report
+   results, and simulate protocol states.  The protocol is intended for
+   use in laboratory environments and MUST NOT be deployed in production
+   networks without appropriate access controls.
+
+Status of This Memo
+
+   This Internet-Draft is submitted in full conformance with the
+   provisions of BCP 78 and BCP 79.
+
+   Internet-Drafts are working documents of the Internet Engineering
+   Task Force (IETF).  Note that other groups may also distribute
+   working documents as Internet-Drafts.  The list of current Internet-
+   Drafts is at https://datatracker.ietf.org/drafts/current/.
+
+   Internet-Drafts are draft documents valid for a maximum of six months
+   and may be updated, replaced, or obsoleted by other documents at any
+   time.  It is inappropriate to use Internet-Drafts as reference
+   material or to cite them other than as "work in progress."
+
+   This Internet-Draft will expire on 15 September 2026.
+
+Copyright Notice
+
+   Copyright (c) 2026 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to BCP 78 and the IETF Trust's Legal
+   Provisions Relating to IETF Documents
+   (https://trustee.ietf.org/license-info) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+   include Revised BSD License text as described in Section 4.e of the
+   Trust Legal Provisions and are provided without warranty as described
+   in the Revised BSD License.
+
+Table of Contents
+
+   1.  Introduction  . . . . . . . . . . . . . . . . . . . . . . .   2
+   2.  Conventions and Definitions . . . . . . . . . . . . . . . .   3
+   3.  Architecture  . . . . . . . . . . . . . . . . . . . . . . .   4
+   4.  Connection Establishment  . . . . . . . . . . . . . . . . .   6
+   5.  Message Types . . . . . . . . . . . . . . . . . . . . . . .   8
+   6.  Error Handling  . . . . . . . . . . . . . . . . . . . . . .  12
+   7.  Security Considerations . . . . . . . . . . . . . . . . . .  14
+   8.  IANA Considerations . . . . . . . . . . . . . . . . . . . .  15
+   9.  References  . . . . . . . . . . . . . . . . . . . . . . . .  16
+   Authors' Addresses  . . . . . . . . . . . . . . . . . . . . . .  17
+
+1.  Introduction
+
+   Conformance testing is a critical activity in the deployment of
+   interoperable protocol implementations.  Without a standardised
+   test harness, each testing organisation must develop its own
+   tooling, leading to fragmented coverage and inconsistent results.
+
+   The IETF Test Protocol (ITP) addresses this by defining a minimal
+   but extensible protocol for remote control of a system under test.
+   A test controller connects to an ITP agent running alongside the
+   SUT, issues test directives, and collects structured results.
+
+   ITP is designed to be protocol-agnostic: it can be used to test any
+   application-layer protocol by parameterising the directives
+   appropriately.  Directives include SEND (inject a message into the
+   SUT's send path), EXPECT (assert that the SUT produces a specific
+   output), INJECT (simulate incoming messages from a peer), and
+   QUERY (retrieve internal SUT state).
+
+1.1.  Scope
+
+   This document specifies:
+
+   - The ITP connection establishment procedure
+   - The ITP message format
+   - The set of core directives
+   - The error reporting mechanism
+   - IANA registration requirements
+
+   This document does not specify how an ITP agent is integrated into
+   a specific SUT; that is left to individual protocol test
+   specifications.
+
+1.2.  Requirements Language
+
+   The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and
+   "OPTIONAL" in this document are to be interpreted as described in
+   BCP 14 [RFC2119] [RFC8174].
+
+2.  Conventions and Definitions
+
+   Test Controller:
+      The entity that initiates an ITP connection and issues directives.
+      Typically a test automation script or conformance test suite.
+
+   System Under Test (SUT):
+      The protocol implementation being evaluated.
+
+   ITP Agent:
+      A software component co-located with the SUT that accepts ITP
+      connections from the test controller and translates ITP directives
+      into SUT operations.
+
+   Directive:
+      An ITP message sent by the test controller to the ITP agent
+      requesting a specific test action.
+
+   Result:
+      An ITP message sent by the ITP agent to the test controller
+      reporting the outcome of a directive.
+
+   Session-ID:
+      A 64-bit identifier assigned by the ITP agent at connection time,
+      uniquely identifying the test session.
+
+3.  Architecture
+
+3.1.  Deployment Model
+
+   An ITP deployment consists of a test controller and one or more ITP
+   agents.  Each agent is associated with exactly one SUT.  The test
+   controller connects to each agent independently, forming separate ITP
+   sessions.
+
+   The test controller coordinates test execution across multiple agents
+   to test multi-endpoint protocol behaviour.  The coordination protocol
+   between agents is out of scope; the ITP agent operates in isolation
+   and reports results only to its connected test controller.
+
+3.2.  Transport
+
+   ITP MUST run over a reliable, ordered transport.  The RECOMMENDED
+   transport is TCP.  The default port for ITP is 9876.  Implementations
+   SHOULD support TLS 1.3 for encryption of the ITP control channel.
+
+3.3.  Session Model
+
+   An ITP session begins with a HELLO exchange and ends with either a
+   BYE message or transport-layer closure.  A session consists of a
+   sequence of directive-result pairs.  Directives are processed in
+   order; the agent MUST NOT begin processing a new directive until
+   the result for the previous directive has been sent.
+
+   A single test controller MAY maintain multiple simultaneous sessions
+   to the same agent to support parallel test execution.  Each session
+   is independent.
+
+3.4.  Versioning
+
+   ITP uses a single version number carried in the HELLO message.
+   This specification defines version 1.  If the agent does not support
+   the version requested by the controller, it MUST send an
+   UNSUPPORTED-VERSION error and close the connection.
+
+4.  Connection Establishment
+
+4.1.  HELLO Exchange
+
+   Connection establishment proceeds as follows.  The HELLO message
+   serves as the initial handshake and MUST be the first message sent
+   on a new connection.  The HELLO message contains the Protocol
+   Version, Capabilities, and Session Identifier fields.
+
+   Upon receiving a HELLO, the agent validates the requested version.
+   If the version is supported, the agent assigns a Session-ID and
+   returns a HELLO-ACK containing the Session-ID and the agent's
+   Capabilities.  The test controller MUST use the Session-ID in all
+   subsequent messages.
+
+4.2.  HELLO Message Format
+
+   The HELLO message is encoded as follows:
+
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |  Type=0x01    |    Version    |          Reserved             |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                       Capabilities                            |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   |               Controller Identifier (16 octets)               |
+   |                                                               |
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+   Version:  The ITP version number.  MUST be 0x01 for this
+             specification.
+
+   Capabilities:  A bitmask of optional capabilities supported by the
+                  controller.  Defined bits are specified in the IANA
+                  registry established in Section 8.
+
+4.3.  Authentication
+
+   ITP does not define its own authentication mechanism.  Authentication
+   MUST be provided at the transport layer (e.g., mutual TLS) when ITP
+   is used outside a controlled lab network.  Agents SHOULD refuse
+   connections from unauthenticated controllers in production test
+   environments.
+
+5.  Message Types
+
+5.1.  Overview
+
+   ITP defines the following core message types:
+
+   Type 0x01   HELLO              Initiate connection
+   Type 0x02   HELLO-ACK          Acknowledge connection
+   Type 0x03   SEND               Inject a message into SUT send path
+   Type 0x04   EXPECT             Assert SUT produces specified output
+   Type 0x05   INJECT             Simulate incoming message to SUT
+   Type 0x06   QUERY              Retrieve SUT internal state
+   Type 0x07   RESULT             Report directive outcome
+   Type 0x08   BYE                Terminate session
+   Type 0x09   ERROR              Report protocol error
+
+5.2.  SEND Directive
+
+   The SEND directive instructs the ITP agent to cause the SUT to
+   transmit a specific message to a specified peer.  The directive body
+   contains the peer address, port, and the verbatim message payload
+   to be transmitted.
+
+   The agent MUST report a RESULT message with status SUCCESS once the
+   SUT has transmitted the message.  If the SUT fails to transmit, the
+   agent MUST report status FAILURE with an appropriate error code.
+
+5.3.  EXPECT Directive
+
+   The EXPECT directive instructs the ITP agent to wait for the SUT to
+   produce a specific output event.  The directive specifies:
+
+   - The source address and port from which the output is expected
+   - A byte-pattern matcher (exact match or masked match)
+   - A timeout value in milliseconds
+
+   The agent MUST report SUCCESS if the expected output is observed
+   within the timeout period.  If the timeout expires without a match,
+   the agent MUST report TIMEOUT.
+
+5.4.  INJECT Directive
+
+   The INJECT directive instructs the ITP agent to deliver a message
+   to the SUT as if it had been received from a specified peer.  This
+   allows the test controller to simulate peer behaviour without
+   requiring a real peer implementation.
+
+5.5.  QUERY Directive
+
+   The QUERY directive retrieves internal SUT state.  The query target
+   is specified by a hierarchical name (e.g.,
+   "session.state", "counters.messages_sent").  The agent translates
+   the name to a SUT-specific observation point.
+
+   Agents MUST support the following standard query targets:
+
+   "session.state"        Current session state (as a string)
+   "session.uptime"       Session duration in seconds
+   "counters.rx"          Total messages received
+   "counters.tx"          Total messages transmitted
+   "counters.errors"      Total error messages sent or received
+
+5.6.  RESULT Message
+
+   The RESULT message is sent by the agent in response to each directive.
+
+   Status codes:
+   SUCCESS (0x00)    The directive completed successfully.
+   FAILURE (0x01)    The directive failed; see error code for details.
+   TIMEOUT (0x02)    The directive timed out.
+   SKIPPED (0x03)    The directive was skipped (see Section 5.7).
+
+5.7.  Directive Dependencies
+
+   Directives MAY declare dependencies on previous directives using
+   the Depends-On field.  If a directive declares a dependency and the
+   referenced directive did not produce SUCCESS, the dependent directive
+   MUST be skipped and a RESULT with status SKIPPED MUST be sent.
+
+6.  Error Handling
+
+6.1.  Error Code Ranges
+
+   Implementations MUST NOT use error codes outside the registered
+   range.  Error codes in the range 0x0000-0x00FF are reserved for use
+   by this specification.  Vendor-specific error codes MUST be allocated
+   from the range 0xFF00-0xFFFF.  Error codes in the range
+   0x0100-0xFEFF are available for allocation by IANA on a first-come,
+   first-served basis.
+
+6.2.  Defined Error Codes
+
+   The following error codes are defined by this specification:
+
+   0x0000   No Error           No error; informational only.
+   0x0001   Protocol Error     Generic protocol violation.
+   0x0002   Version Mismatch   Unsupported version requested.
+   0x0003   Unknown Directive  Directive type not recognised.
+   0x0004   Invalid Target     Query target name not recognised.
+   0x0005   SUT Unreachable    ITP agent cannot communicate with SUT.
+   0x0006   SUT Timeout        SUT did not respond within timeout.
+   0x0007   Resource Limit     Agent has reached a resource limit.
+   0x00FF   Unspecified Error   Error type not further specified.
+
+6.3.  Error Propagation
+
+   When an agent detects a protocol-level error (as opposed to a
+   directive-level failure), it MUST send an ERROR message and
+   immediately close the ITP session.  The test controller MUST NOT
+   send further directives after receiving an ERROR.
+
+   Directive-level failures are reported via RESULT messages with
+   non-SUCCESS status codes and do not terminate the session.
+
+7.  Security Considerations
+
+   ITP is designed for use in controlled test environments.  Running
+   an ITP agent on a production system is strongly discouraged because
+   the INJECT directive allows an attacker with access to the ITP
+   channel to introduce arbitrary traffic into the SUT.
+
+   Deployments outside a secure lab network MUST use TLS 1.3 for the
+   ITP transport and MUST require mutual certificate authentication.
+   The agent MUST restrict accepted directives based on an access
+   control policy specifying which controllers may issue INJECT
+   directives.
+
+   Test controllers SHOULD validate RESULT messages before making test
+   pass/fail decisions.  An agent that has been compromised could
+   report false SUCCESS results.
+
+8.  IANA Considerations
+
+   This document requests IANA to create a new registry group named
+   "IETF Test Protocol (ITP)" containing the following registries:
+
+   "ITP Message Types":  Values of the Type field.  Initial
+      registrations are as specified in Section 5.1.  New registrations
+      require Standards Action.
+
+   "ITP Capabilities":  Bit positions in the Capabilities bitmask.
+      New registrations require Standards Action.
+
+   "ITP Error Codes":  Values in the range 0x0000-0xFEFF.  Initial
+      registrations are as specified in Section 6.2.  New registrations
+      in the range 0x0100-0xFEFF require Expert Review.
+
+   "ITP Query Targets":  Hierarchical names for use with the QUERY
+      directive.  New registrations require Specification Required.
+
+9.  References
+
+9.1.  Normative References
+
+   [RFC2119]  Bradner, S., "Key words for use in RFCs to Indicate
+              Requirement Levels", BCP 14, RFC 2119, March 1997.
+
+   [RFC8174]  Leiba, B., "Ambiguity of Uppercase vs Lowercase in RFC
+              2119 Key Words", BCP 14, RFC 8174, May 2017.
+
+   [RFC8446]  Rescorla, E., "The Transport Layer Security (TLS) Protocol
+              Version 1.3", RFC 8446, August 2018.
+
+9.2.  Informative References
+
+   [RFC3552]  Rescorla, E. and B. Korver, "Guidelines for Writing RFC
+              Text on Security Considerations", BCP 72, RFC 3552,
+              July 2003.
+
+Authors' Addresses
+
+   Amy Lee (editor)
+   Research University
+   1 Campus Drive
+   Berkeley, CA 94720
+   United States of America
+   Email: alee@research-univ.example
+
+   Chi Nguyen
+   Open Standards Foundation
+   42 Interop Lane
+   Austin, TX 78701
+   United States of America
+   Email: cnguyen@openstd.example
+
+   Dev Kumar
+   NetLab Inc.
+   99 Packet Street
+   Seattle, WA 98101
+   United States of America
+   Email: dkumar@netlab.example
