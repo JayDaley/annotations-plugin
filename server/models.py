@@ -9,7 +9,7 @@ from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
-VALID_STATUSES = ("open", "closed", "resolved")
+VALID_STATUSES = ("open", "resolved")
 
 
 class User(db.Model):
@@ -52,18 +52,28 @@ class Annotation(db.Model):
     created = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     modified = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     selector = db.Column(db.Text)  # JSON string
+    reply_to = db.Column(db.String(36), db.ForeignKey("annotation.id"), nullable=True, index=True)
+    reply_count = db.Column(db.Integer, default=0)
+
+    replies = db.relationship(
+        "Annotation",
+        backref=db.backref("parent", remote_side="Annotation.id"),
+        lazy=True,
+        cascade="all, delete-orphan",
+    )
 
     def selector_dict(self):
         return json.loads(self.selector) if self.selector else None
 
     def to_jsonld(self, base_url: str) -> dict:
         """Serialise to W3C Web Annotation JSON-LD format."""
-        return {
+        result = {
             "@context": "http://www.w3.org/ns/anno.jsonld",
             "id": f"{base_url}/api/annotations/{self.id}",
             "type": "Annotation",
             "motivation": self.motivation,
             "status": self.status,
+            "replyCount": self.reply_count or 0,
             "creator": {
                 "id": f"{base_url}/api/users/{self.creator.id}",
                 "type": "Person",
@@ -81,6 +91,9 @@ class Annotation(db.Model):
                 "selector": self.selector_dict(),
             },
         }
+        if self.reply_to:
+            result["replyTo"] = f"{base_url}/api/annotations/{self.reply_to}"
+        return result
 
 
 def _fmt(dt: datetime) -> str:

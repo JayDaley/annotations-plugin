@@ -17,13 +17,15 @@ export function makeAnnotation(
     suffix: string;
     targetSource: string;
     created: string;
+    replyTo: string;
+    replyCount: number;
   }> = {},
 ): W3CAnnotation {
   _counter++;
   const id = overrides.id ?? `ann-${_counter}`;
   const creatorName = overrides.creatorName ?? "alice";
 
-  return {
+  const ann: W3CAnnotation = {
     "@context": "http://www.w3.org/ns/anno.jsonld",
     id,
     type: "Annotation",
@@ -52,5 +54,12 @@ export function makeAnnotation(
         suffix: overrides.suffix ?? "-suffix",
       },
     },
+    replyCount: overrides.replyCount ?? 0,
   };
+
+  if (overrides.replyTo) {
+    ann.replyTo = overrides.replyTo;
+  }
+
+  return ann;
 }

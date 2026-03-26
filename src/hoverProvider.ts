@@ -5,9 +5,9 @@ import { PROVIDER_ID } from "./auth";
 /**
  * Provides hover tooltips for annotated lines in draft-*.txt files.
  *
- * Each annotation is shown as a Markdown card with the body text in a
- * blockquote, followed by a single action line showing the author, a
- * status toggle (Resolve / Re-open), and Delete (own annotations only).
+ * Each annotation is shown as a Markdown card with the body text,
+ * followed by a single action line showing the author, status toggle,
+ * reply count, Reply, Edit, and Delete links.
  */
 export class AnnotationHoverProvider implements vscode.HoverProvider {
   constructor(private readonly decorations: DecorationManager) {}
@@ -46,7 +46,7 @@ export class AnnotationHoverProvider implements vscode.HoverProvider {
       // ── Body text in normal font ──────────────────────────────────────────
       combined.appendMarkdown(`${ann.body.value}\n\n---\n\n`);
 
-      // ── Action line: author · status label · status toggle · delete ──────
+      // ── Action line ────────────────────────────────────────────────────────
       const isOpen = ann.status === "open";
 
       const statusLabel = isOpen
@@ -64,6 +64,21 @@ export class AnnotationHoverProvider implements vscode.HoverProvider {
         `**${ann.creator.name}**`,
         `${statusLabel} · ${toggleLink}`,
       ];
+
+      // Reply count — clickable to open the thread panel
+      if (ann.replyCount > 0) {
+        const threadArgs = encodeURIComponent(JSON.stringify([ann.id]));
+        const noun = ann.replyCount === 1 ? "reply" : "replies";
+        actionParts.push(
+          `[${ann.replyCount} ${noun}](command:ietfAnnotations.showReplyThread?${threadArgs})`,
+        );
+      }
+
+      // Reply action
+      const replyArgs = encodeURIComponent(JSON.stringify([ann.id]));
+      actionParts.push(
+        `[Reply](command:ietfAnnotations.replyToAnnotation?${replyArgs})`,
+      );
 
       if (currentUser && ann.creator.name === currentUser) {
         const editArgs = encodeURIComponent(JSON.stringify([ann.id]));

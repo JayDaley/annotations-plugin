@@ -55,7 +55,12 @@ export class DraftForgeAnnotationTreeProvider
         `"${label}"`,
         vscode.TreeItemCollapsibleState.None,
       );
-      item.description = ann.creator.name;
+      if (ann.replyCount > 0) {
+        const noun = ann.replyCount === 1 ? "reply" : "replies";
+        item.description = `${ann.creator.name} · ${ann.replyCount} ${noun}`;
+      } else {
+        item.description = ann.creator.name;
+      }
       item.tooltip = ann.body.value;
       item.iconPath = new vscode.ThemeIcon("comment");
 

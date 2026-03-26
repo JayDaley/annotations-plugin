@@ -8,6 +8,7 @@ import { AnnotationHoverProvider } from "./hoverProvider";
 import { AnnotationTreeProvider, TreeViewMode } from "./treeView";
 import { DraftForgeAnnotationTreeProvider } from "./draftForgeTreeView";
 import { showMultilineInput } from "./annotationInput";
+import { showReplyThread } from "./replyThreadPanel";
 import { AnnotationStatus, W3CAnnotation } from "./types";
 
 const DRAFT_PATTERN = /^draft-.+\.txt$/;
@@ -485,6 +486,114 @@ export function activate(context: vscode.ExtensionContext): void {
           new vscode.Range(position, position),
           vscode.TextEditorRevealType.InCenter,
         );
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "ietfAnnotations.replyToAnnotation",
+      async (annotationId?: string) => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || !isDraftFile(editor.document)) {
+          return;
+        }
+
+        let annotation: W3CAnnotation | undefined;
+
+        if (annotationId) {
+          for (const anns of decorationManager.lineAnnotations.values()) {
+            annotation = anns.find((a) => a.id === annotationId);
+            if (annotation) {
+              break;
+            }
+          }
+        } else {
+          const line = editor.selection.active.line;
+          const anns = decorationManager.lineAnnotations.get(line);
+          if (!anns || anns.length === 0) {
+            vscode.window.showWarningMessage("No annotation on this line.");
+            return;
+          }
+          if (anns.length === 1) {
+            annotation = anns[0];
+          } else {
+            const pick = await vscode.window.showQuickPick(
+              anns.map((a) => ({
+                label: `${a.creator.name}: ${a.body.value.slice(0, 50)}`,
+                annotation: a,
+              })),
+              { placeHolder: "Select annotation to reply to" },
+            );
+            annotation = pick?.annotation;
+          }
+        }
+
+        if (!annotation) {
+          return;
+        }
+
+        const replyText = await showMultilineInput(
+          "Reply to Annotation",
+          "Enter your reply…",
+        );
+        if (replyText === undefined) {
+          return;
+        }
+
+        const result = await annotationManager.createReply(
+          annotation,
+          replyText,
+        );
+        if (result) {
+          vscode.window.setStatusBarMessage("Reply posted.", 3000);
+          await refresh();
+        }
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "ietfAnnotations.showReplyThread",
+      async (annotationId?: string) => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || !isDraftFile(editor.document)) {
+          return;
+        }
+
+        let annotation: W3CAnnotation | undefined;
+
+        if (annotationId) {
+          for (const anns of decorationManager.lineAnnotations.values()) {
+            annotation = anns.find((a) => a.id === annotationId);
+            if (annotation) {
+              break;
+            }
+          }
+        }
+
+        if (!annotation) {
+          return;
+        }
+
+        const session = await vscode.authentication.getSession(
+          PROVIDER_ID,
+          [],
+          { silent: true },
+        );
+        const currentUser = session?.account.label ?? "";
+
+        const response = await client.getReplies(annotation.id);
+        const replies = response.annotations;
+
+        const msg = await showReplyThread(annotation, replies, currentUser);
+        if (msg?.type === "reply" && msg.value) {
+          const result = await annotationManager.createReply(
+            annotation,
+            msg.value,
+          );
+          if (result) {
+            vscode.window.setStatusBarMessage("Reply posted.", 3000);
+            await refresh();
+          }
+        }
       },
     ),
   );

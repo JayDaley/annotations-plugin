@@ -236,4 +236,54 @@ export class AnnotationManager {
       return false;
     }
   }
+
+  /**
+   * Create a reply annotation.
+   * Automatically retries once after a 401 with a fresh credential prompt.
+   *
+   * @param parentAnnotation - The annotation being replied to.
+   * @param bodyText         - The reply body text.
+   * @returns The created reply annotation, or `undefined` if the operation failed.
+   */
+  async createReply(
+    parentAnnotation: W3CAnnotation,
+    bodyText: string,
+  ): Promise<W3CAnnotation | undefined> {
+    const authed = await this.ensureAuth();
+    if (!authed) {
+      return undefined;
+    }
+
+    const req: CreateAnnotationRequest = {
+      motivation: "replying",
+      body: { type: "TextualBody", value: bodyText, format: "text/plain" },
+      target: {
+        source: parentAnnotation.target.source,
+        selector: parentAnnotation.target.selector,
+      },
+      replyTo: parentAnnotation.id,
+    };
+
+    try {
+      return await this.client.createAnnotation(req);
+    } catch (err) {
+      if (err instanceof ApiError && err.statusCode === 401) {
+        const reauthed = await this.forceReauth();
+        if (reauthed) {
+          try {
+            return await this.client.createAnnotation(req);
+          } catch (retryErr) {
+            this.handleError(retryErr, "createReply");
+          }
+        }
+      } else if (err instanceof ApiError && err.statusCode === 404) {
+        vscode.window.showErrorMessage(
+          "The annotation you are replying to no longer exists.",
+        );
+      } else {
+        this.handleError(err, "createReply");
+      }
+      return undefined;
+    }
+  }
 }

@@ -35,6 +35,8 @@ export interface W3CAnnotation {
     source: string;
     selector: TextQuoteSelector;
   };
+  replyTo?: string;
+  replyCount: number;
 }
 
 export interface AnnotationListResponse {
@@ -55,4 +57,5 @@ export interface CreateAnnotationRequest {
     source: string;
     selector: TextQuoteSelector;
   };
+  replyTo?: string;
 }

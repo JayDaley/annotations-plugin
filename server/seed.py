@@ -91,7 +91,7 @@ _ANNOTATIONS = [
         "This contradicts the multiplexing requirements that were discussed on "
         "the mailing list in January.  If we allow pipelining (see issue #47) "
         "this MUST NOT becomes a SHOULD NOT with a numeric limit.",
-        "closed",
+        "resolved",
         {
             "type": "TextQuoteSelector",
             "exact": "A sender MUST NOT transmit more than one outstanding request per session without receiving a response.",
@@ -107,7 +107,7 @@ _ANNOTATIONS = [
         "draft implied the Version field would be negotiated.  Needs a note "
         "explaining that this field always carries the sending endpoint's "
         "implemented version, not the negotiated version.",
-        "closed",
+        "resolved",
         {
             "type": "TextQuoteSelector",
             "exact": "The Version field MUST be set to 0x02 for all messages conforming to this specification.",
@@ -151,6 +151,44 @@ _ANNOTATIONS = [
     ),
 ]
 
+# Reply annotations — (username, body_value, status)
+# These reference top-level annotations by their index in _ANNOTATIONS.
+# The _create_annotations function stores annotation IDs for reply wiring.
+_REPLIES = [
+    # Reply from bob to alice's first annotation (index 0) on draft-ietf-foo-bar-03
+    {
+        "parent_index": 0,
+        "username": "bob",
+        "body_value": (
+            "I checked the errata for RFC 4086 and there is precedent for "
+            "accepting padded nonces.  A SHOULD with a note about why 16 octets "
+            "is preferred would be the best path."
+        ),
+        "status": "open",
+    },
+    # Reply from carol to that reply (demonstrating two-level threading)
+    {
+        "parent_reply_index": 0,  # index into _REPLIES — bob's reply above
+        "username": "carol",
+        "body_value": (
+            "Agreed.  I'll draft replacement text for the next revision.  "
+            "We should also update the IANA considerations to match."
+        ),
+        "status": "open",
+    },
+    # Reply from alice to carol's keepalive annotation (index 2) on draft-ietf-foo-bar-03
+    {
+        "parent_index": 2,
+        "username": "alice",
+        "body_value": (
+            "Good point about satellite links.  The working group discussed "
+            "this at IETF 119 and agreed the timer should be configurable.  "
+            "Marking this resolved since the -04 draft addresses it."
+        ),
+        "status": "resolved",
+    },
+]
+
 
 # ---------------------------------------------------------------------------
 # Public interface
@@ -164,8 +202,10 @@ def seed_all(app=None) -> None:
     from models import User, Annotation, db
 
     users = _create_users(db)
-    _create_annotations(db, users)
-    print(f"  Seeded {len(users)} users and {len(_ANNOTATIONS)} annotations.")
+    annotation_ids = _create_annotations(db, users)
+    reply_count = _create_replies(db, users, annotation_ids)
+    total = len(_ANNOTATIONS) + reply_count
+    print(f"  Seeded {len(users)} users, {len(_ANNOTATIONS)} annotations, and {reply_count} replies.")
 
 
 def _hash(password: str) -> str:
@@ -185,15 +225,18 @@ def _create_users(db) -> dict[str, object]:
     return users
 
 
-def _create_annotations(db, users: dict) -> None:
+def _create_annotations(db, users: dict) -> list[str]:
+    """Create top-level annotations. Returns list of annotation IDs in order."""
     from models import Annotation
 
     now = datetime.now(timezone.utc)
+    annotation_ids: list[str] = []
 
     for username, target_url, body_value, status, selector, *_ in _ANNOTATIONS:
         user = users[username]
+        ann_id = str(uuid.uuid4())
         ann = Annotation(
-            id=str(uuid.uuid4()),
+            id=ann_id,
             target_url=target_url,
             creator_id=user.id,
             body_value=body_value,
@@ -202,10 +245,58 @@ def _create_annotations(db, users: dict) -> None:
             created=now,
             modified=now,
             selector=json.dumps(selector),
+            reply_to=None,
+            reply_count=0,
         )
         db.session.add(ann)
+        annotation_ids.append(ann_id)
+
+    db.session.flush()
+    return annotation_ids
+
+
+def _create_replies(db, users: dict, annotation_ids: list[str]) -> int:
+    """Create reply annotations. Returns the count of replies created."""
+    from models import Annotation
+
+    now = datetime.now(timezone.utc)
+    reply_ids: list[str] = []
+    count = 0
+
+    for reply_def in _REPLIES:
+        user = users[reply_def["username"]]
+        reply_id = str(uuid.uuid4())
+
+        # Determine parent: either a top-level annotation or an earlier reply
+        if "parent_index" in reply_def:
+            parent_id = annotation_ids[reply_def["parent_index"]]
+        else:
+            parent_id = reply_ids[reply_def["parent_reply_index"]]
+
+        # Get the parent to copy target info and increment reply_count
+        parent = db.session.get(Annotation, parent_id)
+
+        reply = Annotation(
+            id=reply_id,
+            target_url=parent.target_url,
+            creator_id=user.id,
+            body_value=reply_def["body_value"],
+            motivation="replying",
+            status=reply_def["status"],
+            created=now,
+            modified=now,
+            selector=parent.selector,
+            reply_to=parent_id,
+            reply_count=0,
+        )
+        db.session.add(reply)
+        parent.reply_count = (parent.reply_count or 0) + 1
+
+        reply_ids.append(reply_id)
+        count += 1
 
     db.session.commit()
+    return count
 
 
 # ---------------------------------------------------------------------------

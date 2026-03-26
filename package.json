@@ -19,7 +19,9 @@
     "onCommand:ietfAnnotations.editAnnotation",
     "onCommand:ietfAnnotations.deleteAnnotation",
     "onCommand:ietfAnnotations.refresh",
-    "onCommand:ietfAnnotations.showAllVersions"
+    "onCommand:ietfAnnotations.showAllVersions",
+    "onCommand:ietfAnnotations.replyToAnnotation",
+    "onCommand:ietfAnnotations.showReplyThread"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -62,6 +64,14 @@
       {
         "command": "ietfAnnotations.showAllVersions",
         "title": "IETF Annotations: Show All Versions"
+      },
+      {
+        "command": "ietfAnnotations.replyToAnnotation",
+        "title": "IETF Annotations: Reply to Annotation"
+      },
+      {
+        "command": "ietfAnnotations.showReplyThread",
+        "title": "IETF Annotations: Show Reply Thread"
       }
     ],
     "configuration": {

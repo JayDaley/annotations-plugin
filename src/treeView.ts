@@ -158,7 +158,11 @@ export class AnnotationTreeProvider
         ann.body.value.length > 50
           ? ann.body.value.slice(0, 50) + "…"
           : ann.body.value;
-      const label = `${ann.creator.name}: "${bodyExcerpt}"`;
+      let label = `${ann.creator.name}: "${bodyExcerpt}"`;
+      if (ann.replyCount > 0) {
+        const noun = ann.replyCount === 1 ? "reply" : "replies";
+        label += ` (${ann.replyCount} ${noun})`;
+      }
       return new AnnotationTreeItem(
         label,
         vscode.TreeItemCollapsibleState.None,

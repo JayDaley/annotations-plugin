@@ -144,6 +144,21 @@ export class AnnotationApiClient {
     return this.request("DELETE", `/api/annotations/${id}`, undefined, true);
   }
 
+  getReplies(
+    annotationId: string,
+    params?: { page?: number; per_page?: number },
+  ): Promise<AnnotationListResponse> {
+    // Normalise: strip server URL prefix if a full URI was passed
+    const id = annotationId.includes("/")
+      ? annotationId.split("/").pop()!
+      : annotationId;
+    const qs = new URLSearchParams();
+    if (params?.page) { qs.set("page", String(params.page)); }
+    if (params?.per_page) { qs.set("per_page", String(params.per_page)); }
+    const query = qs.toString() ? `?${qs.toString()}` : "";
+    return this.request("GET", `/api/annotations/${id}/replies${query}`);
+  }
+
   listDrafts(): Promise<
     Array<{ filename: string; name: string; version: string; url: string }>
   > {
