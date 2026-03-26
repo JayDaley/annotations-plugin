@@ -8,4 +8,5 @@ server/__pycache__/
 server/*.pyc
 server/.venv/
 server/venv/
+server/annotations.db
 *.egg-info/
