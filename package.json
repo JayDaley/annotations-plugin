@@ -1,60 +1,106 @@
 {
-  "name": "annotations-plugin",
-  "displayName": "Annotations Plugin",
-  "description": "Annotate code with inline comments stored on a remote server",
-  "version": "0.0.1",
+  "name": "ietf-annotations",
+  "displayName": "IETF Annotations",
+  "description": "Create, view, and manage annotations on Internet-Draft documents",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": ["Other"],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:plaintext",
+    "onAuthenticationRequest:ietfAnnotations",
+    "onCommand:ietfAnnotations.login",
+    "onCommand:ietfAnnotations.logout",
+    "onCommand:ietfAnnotations.addAnnotation",
+    "onCommand:ietfAnnotations.changeStatus",
+    "onCommand:ietfAnnotations.editAnnotation",
+    "onCommand:ietfAnnotations.deleteAnnotation",
+    "onCommand:ietfAnnotations.refresh",
+    "onCommand:ietfAnnotations.showAllVersions"
+  ],
   "main": "./out/extension.js",
   "contributes": {
-    "commands": [
+    "authentication": [
       {
-        "command": "annotations.addAnnotation",
-        "title": "Add Annotation"
-      },
-      {
-        "command": "annotations.showAnnotations",
-        "title": "Show Annotations"
-      },
-      {
-        "command": "annotations.deleteAnnotation",
-        "title": "Delete Annotation"
-      },
-      {
-        "command": "annotations.configureServer",
-        "title": "Configure Annotation Server"
+        "id": "ietfAnnotations",
+        "label": "IETF Annotations"
       }
     ],
-    "menus": {
-      "editor/context": [
+    "commands": [
+      {
+        "command": "ietfAnnotations.login",
+        "title": "IETF Annotations: Login"
+      },
+      {
+        "command": "ietfAnnotations.logout",
+        "title": "IETF Annotations: Logout"
+      },
+      {
+        "command": "ietfAnnotations.addAnnotation",
+        "title": "IETF Annotations: Add Annotation"
+      },
+      {
+        "command": "ietfAnnotations.changeStatus",
+        "title": "IETF Annotations: Change Status"
+      },
+      {
+        "command": "ietfAnnotations.editAnnotation",
+        "title": "IETF Annotations: Edit Annotation"
+      },
+      {
+        "command": "ietfAnnotations.deleteAnnotation",
+        "title": "IETF Annotations: Delete Annotation"
+      },
+      {
+        "command": "ietfAnnotations.refresh",
+        "title": "IETF Annotations: Refresh Annotations",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ietfAnnotations.showAllVersions",
+        "title": "IETF Annotations: Show All Versions"
+      }
+    ],
+    "configuration": {
+      "title": "IETF Annotations",
+      "properties": {
+        "ietfAnnotations.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:5000",
+          "description": "Base URL of the IETF annotation server"
+        }
+      }
+    },
+    "views": {
+      "explorer": [
         {
-          "command": "annotations.addAnnotation",
-          "when": "editorHasSelection",
-          "group": "annotations"
-        },
+          "id": "ietfAnnotationsView",
+          "name": "IETF Annotations"
+        }
+      ],
+      "draftforge": [
         {
-          "command": "annotations.showAnnotations",
-          "group": "annotations"
+          "id": "ietfAnnotationsDraftForgeView",
+          "name": "Annotations"
         }
       ]
     },
-    "configuration": {
-      "title": "Annotations Plugin",
-      "properties": {
-        "annotationsPlugin.serverUrl": {
-          "type": "string",
-          "default": "http://localhost:5000",
-          "description": "URL of the annotation server"
-        },
-        "annotationsPlugin.username": {
-          "type": "string",
-          "default": "",
-          "description": "Username for the annotation server"
+    "menus": {
+      "editor/context": [
+        {
+          "command": "ietfAnnotations.addAnnotation",
+          "when": "editorHasSelection && resourceFilename =~ /^draft-.*\\.txt$/",
+          "group": "z_ietfAnnotations@1"
         }
-      }
+      ],
+      "view/title": [
+        {
+          "command": "ietfAnnotations.refresh",
+          "when": "view == ietfAnnotationsView",
+          "group": "navigation"
+        }
+      ]
     }
   },
   "scripts": {
