@@ -17,7 +17,9 @@ Annotations follow the [W3C Web Annotation](https://www.w3.org/TR/annotation-mod
 - Annotate selected text in `draft-*.txt` files with multiline input
 - Light-green background highlighting on all annotated text spans
 - Gutter icons indicating annotation status (open/resolved)
-- Hover popup with annotation body, status toggle, edit, and delete actions
+- Hover popup with annotation body, status toggle, reply, edit, and delete actions
+- Threaded replies — reply to any annotation, view reply threads in a side panel
+- Reply counts shown in hover tooltips, Explorer tree, and DraftForge sidebar
 - Authentication via the VS Code Accounts icon (bottom-left of the sidebar)
 - Tree view in Explorer grouped by status
 - Annotations panel in the [DraftForge](https://github.com/ietf-tools/draftforge) sidebar listing annotations by quoted text
@@ -26,7 +28,8 @@ Annotations follow the [W3C Web Annotation](https://www.w3.org/TR/annotation-mod
 **Test server**
 - Serves sample Internet-Draft `.txt` files at stable versioned URLs
 - REST API for annotation CRUD with bearer token authentication
-- Seeded with three test users and seven sample annotations across three drafts
+- Threaded reply support with cascade deletes and denormalised reply counts
+- Seeded with three test users, seven top-level annotations, and three replies across three drafts
 
 ## Getting Started
 
@@ -87,8 +90,9 @@ src/
   types.ts              W3C Annotation TypeScript interfaces
   api.ts                HTTP client for the annotation server
   auth.ts               VS Code Authentication Provider
-  annotations.ts        Annotation CRUD coordinator
+  annotations.ts        Annotation CRUD coordinator (create, edit, delete, reply)
   annotationInput.ts    Multiline input webview panel
+  replyThreadPanel.ts   Reply thread webview panel (side-by-side)
   decorations.ts        Gutter icons and text highlighting
   hoverProvider.ts      Hover tooltip with actions
   treeView.ts           Explorer tree view (grouped by status)
@@ -107,6 +111,7 @@ server/
 
 - [`plugin-spec.md`](plugin-spec.md) — full specification for the VS Code extension
 - [`server-spec.md`](server-spec.md) — full specification for the Flask server
+- [`reply-spec.md`](reply-spec.md) — specification for threaded reply support (extends both specs above)
 
 ## License
 
