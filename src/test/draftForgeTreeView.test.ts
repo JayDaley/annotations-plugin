@@ -83,6 +83,42 @@ suite("DraftForgeAnnotationTreeProvider", () => {
     assert.strictEqual(children[0].description, "carol");
   });
 
+  test("shows reply count in description when replies exist", () => {
+    const annotations = [
+      makeAnnotation({ id: "a1", creatorName: "carol", replyCount: 5 }),
+    ];
+    const lineMap = new Map([["a1", 0]]);
+
+    provider.setAnnotations(annotations, lineMap);
+    const children = provider.getChildren();
+
+    assert.strictEqual(children[0].description, "carol · 5 replies");
+  });
+
+  test("shows singular reply in description for count of 1", () => {
+    const annotations = [
+      makeAnnotation({ id: "a1", creatorName: "alice", replyCount: 1 }),
+    ];
+    const lineMap = new Map([["a1", 0]]);
+
+    provider.setAnnotations(annotations, lineMap);
+    const children = provider.getChildren();
+
+    assert.strictEqual(children[0].description, "alice · 1 reply");
+  });
+
+  test("shows only creator name when no replies", () => {
+    const annotations = [
+      makeAnnotation({ id: "a1", creatorName: "bob", replyCount: 0 }),
+    ];
+    const lineMap = new Map([["a1", 0]]);
+
+    provider.setAnnotations(annotations, lineMap);
+    const children = provider.getChildren();
+
+    assert.strictEqual(children[0].description, "bob");
+  });
+
   test("shows annotation body as tooltip", () => {
     const annotations = [
       makeAnnotation({ id: "a1", bodyValue: "My detailed comment" }),

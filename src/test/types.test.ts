@@ -56,4 +56,20 @@ suite("W3CAnnotation type contracts", () => {
     assert.strictEqual(ann.target.source, "http://example.com/test.txt");
     assert.strictEqual(ann.created, "2025-06-01T00:00:00Z");
   });
+
+  test("makeAnnotation defaults replyCount to 0", () => {
+    const ann = makeAnnotation();
+    assert.strictEqual(ann.replyCount, 0);
+    assert.strictEqual(ann.replyTo, undefined);
+  });
+
+  test("makeAnnotation accepts replyTo and replyCount overrides", () => {
+    const ann = makeAnnotation({
+      id: "reply-1",
+      replyTo: "parent-ann",
+      replyCount: 3,
+    });
+    assert.strictEqual(ann.replyTo, "parent-ann");
+    assert.strictEqual(ann.replyCount, 3);
+  });
 });

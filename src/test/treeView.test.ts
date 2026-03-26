@@ -177,6 +177,52 @@ suite("AnnotationTreeProvider", () => {
     assert.ok(fired, "Should fire change event");
   });
 
+  test("annotation items show reply count suffix", () => {
+    const annotations = [
+      makeAnnotation({ id: "a1", status: "open", replyCount: 3, creatorName: "alice", bodyValue: "Comment" }),
+    ];
+    const lineMap = new Map([["a1", 0]]);
+
+    provider.setAnnotations(annotations, lineMap, "single");
+    const roots = provider.getChildren();
+    const openGroup = roots[0] as AnnotationTreeItem;
+    const items = provider.getChildren(openGroup);
+
+    const label = items[0].label as string;
+    assert.ok(label.includes("3 replies"), "Should show reply count in label");
+  });
+
+  test("annotation items show singular reply for count of 1", () => {
+    const annotations = [
+      makeAnnotation({ id: "a1", status: "open", replyCount: 1 }),
+    ];
+    const lineMap = new Map([["a1", 0]]);
+
+    provider.setAnnotations(annotations, lineMap, "single");
+    const roots = provider.getChildren();
+    const openGroup = roots[0] as AnnotationTreeItem;
+    const items = provider.getChildren(openGroup);
+
+    const label = items[0].label as string;
+    assert.ok(label.includes("1 reply"), "Should show singular 'reply'");
+    assert.ok(!label.includes("1 replies"), "Should not show plural for 1");
+  });
+
+  test("annotation items omit reply count when zero", () => {
+    const annotations = [
+      makeAnnotation({ id: "a1", status: "open", replyCount: 0 }),
+    ];
+    const lineMap = new Map([["a1", 0]]);
+
+    provider.setAnnotations(annotations, lineMap, "single");
+    const roots = provider.getChildren();
+    const openGroup = roots[0] as AnnotationTreeItem;
+    const items = provider.getChildren(openGroup);
+
+    const label = items[0].label as string;
+    assert.ok(!label.includes("repl"), "Should not show reply count when zero");
+  });
+
   test("handles zero annotations gracefully", () => {
     provider.setAnnotations([], new Map(), "single");
     const roots = provider.getChildren();

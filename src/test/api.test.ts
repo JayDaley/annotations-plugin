@@ -265,6 +265,101 @@ suite("AnnotationApiClient", () => {
     }
   });
 
+  test("getReplies builds correct URL for bare ID", async () => {
+    let capturedUrl = "";
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (input: string | URL | Request, _init?: RequestInit) => {
+      capturedUrl = typeof input === "string" ? input : input.toString();
+      return new Response(
+        JSON.stringify({ total: 0, page: 1, per_page: 20, annotations: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    try {
+      const client = new AnnotationApiClient(
+        () => "http://test-server:5000",
+        async () => undefined,
+      );
+
+      await client.getReplies("abc-123");
+
+      assert.ok(
+        capturedUrl.includes("/api/annotations/abc-123/replies"),
+        `URL should contain /api/annotations/abc-123/replies, got: ${capturedUrl}`,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("getReplies strips full URI to extract ID", async () => {
+    let capturedUrl = "";
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (input: string | URL | Request, _init?: RequestInit) => {
+      capturedUrl = typeof input === "string" ? input : input.toString();
+      return new Response(
+        JSON.stringify({ total: 0, page: 1, per_page: 20, annotations: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    try {
+      const client = new AnnotationApiClient(
+        () => "http://test-server:5000",
+        async () => undefined,
+      );
+
+      await client.getReplies("http://test-server:5000/api/annotations/xyz-456");
+
+      assert.ok(
+        capturedUrl.includes("/api/annotations/xyz-456/replies"),
+        `URL should use extracted ID, got: ${capturedUrl}`,
+      );
+      assert.ok(
+        !capturedUrl.includes("http://test-server:5000/api/annotations/http"),
+        "Should not nest the full URI in the path",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("getReplies passes pagination params", async () => {
+    let capturedUrl = "";
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (input: string | URL | Request, _init?: RequestInit) => {
+      capturedUrl = typeof input === "string" ? input : input.toString();
+      return new Response(
+        JSON.stringify({ total: 0, page: 2, per_page: 10, annotations: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    try {
+      const client = new AnnotationApiClient(
+        () => "http://test-server:5000",
+        async () => undefined,
+      );
+
+      await client.getReplies("abc-123", { page: 2, per_page: 10 });
+
+      assert.ok(
+        capturedUrl.includes("page=2"),
+        "URL should include page param",
+      );
+      assert.ok(
+        capturedUrl.includes("per_page=10"),
+        "URL should include per_page param",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("handles 204 No Content response", async () => {
     const originalFetch = globalThis.fetch;
 

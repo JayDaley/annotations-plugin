@@ -39,6 +39,8 @@ suite("Extension Activation", () => {
       "ietfAnnotations.refresh",
       "ietfAnnotations.showAllVersions",
       "ietfAnnotations.revealLine",
+      "ietfAnnotations.replyToAnnotation",
+      "ietfAnnotations.showReplyThread",
     ];
 
     for (const cmd of expected) {

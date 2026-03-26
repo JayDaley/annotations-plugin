@@ -196,6 +196,98 @@ suite("AnnotationHoverProvider", () => {
     );
   });
 
+  test("hover shows reply count with thread link", async () => {
+    const ann = makeAnnotation({ id: "a1", replyCount: 3 });
+    const manager = managerWithAnnotations(0, [ann]);
+    const provider = new AnnotationHoverProvider(manager);
+
+    const doc = await vscode.workspace.openTextDocument({
+      content: "text\n",
+      language: "plaintext",
+    });
+    const hover = await provider.provideHover(doc, new vscode.Position(0, 0));
+
+    assert.ok(hover);
+    const md = hover.contents[0] as vscode.MarkdownString;
+    assert.ok(
+      md.value.includes("3 replies"),
+      "Should show reply count",
+    );
+    assert.ok(
+      md.value.includes("command:ietfAnnotations.showReplyThread"),
+      "Reply count should link to showReplyThread command",
+    );
+  });
+
+  test("hover shows singular reply for count of 1", async () => {
+    const ann = makeAnnotation({ id: "a1", replyCount: 1 });
+    const manager = managerWithAnnotations(0, [ann]);
+    const provider = new AnnotationHoverProvider(manager);
+
+    const doc = await vscode.workspace.openTextDocument({
+      content: "text\n",
+      language: "plaintext",
+    });
+    const hover = await provider.provideHover(doc, new vscode.Position(0, 0));
+
+    assert.ok(hover);
+    const md = hover.contents[0] as vscode.MarkdownString;
+    assert.ok(
+      md.value.includes("1 reply"),
+      "Should show singular 'reply'",
+    );
+    assert.ok(
+      !md.value.includes("1 replies"),
+      "Should not show plural for count of 1",
+    );
+  });
+
+  test("hover does not show reply count when zero", async () => {
+    const ann = makeAnnotation({ id: "a1", replyCount: 0 });
+    const manager = managerWithAnnotations(0, [ann]);
+    const provider = new AnnotationHoverProvider(manager);
+
+    const doc = await vscode.workspace.openTextDocument({
+      content: "text\n",
+      language: "plaintext",
+    });
+    const hover = await provider.provideHover(doc, new vscode.Position(0, 0));
+
+    assert.ok(hover);
+    const md = hover.contents[0] as vscode.MarkdownString;
+    assert.ok(
+      !md.value.includes("0 repl"),
+      "Should not show reply count when zero",
+    );
+    assert.ok(
+      !md.value.includes("showReplyThread"),
+      "Should not show thread link when no replies",
+    );
+  });
+
+  test("hover contains Reply action link", async () => {
+    const ann = makeAnnotation({ id: "a1" });
+    const manager = managerWithAnnotations(0, [ann]);
+    const provider = new AnnotationHoverProvider(manager);
+
+    const doc = await vscode.workspace.openTextDocument({
+      content: "text\n",
+      language: "plaintext",
+    });
+    const hover = await provider.provideHover(doc, new vscode.Position(0, 0));
+
+    assert.ok(hover);
+    const md = hover.contents[0] as vscode.MarkdownString;
+    assert.ok(
+      md.value.includes("Reply"),
+      "Should show Reply action",
+    );
+    assert.ok(
+      md.value.includes("command:ietfAnnotations.replyToAnnotation"),
+      "Should contain replyToAnnotation command URI",
+    );
+  });
+
   test("hover does not contain quoted target text", async () => {
     const ann = makeAnnotation({
       id: "a1",

@@ -216,6 +216,129 @@ suite("AnnotationManager", () => {
     });
   });
 
+  suite("createReply", () => {
+    test("returns undefined when auth fails", async () => {
+      const manager = new AnnotationManager(
+        new AnnotationApiClient(
+          () => "http://test:5000",
+          async () => "token",
+        ),
+        async () => false,
+        async () => false,
+        mockOutput() as any,
+      );
+
+      const parent = makeAnnotation({ id: "parent-1" });
+      const result = await manager.createReply(parent, "My reply");
+      assert.strictEqual(result, undefined);
+    });
+
+    test("creates reply successfully", async () => {
+      const reply = makeAnnotation({ id: "reply-1", replyTo: "parent-1" });
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async () => {
+        return new Response(JSON.stringify(reply), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      };
+
+      try {
+        const manager = new AnnotationManager(
+          new AnnotationApiClient(
+            () => "http://test:5000",
+            async () => "token",
+          ),
+          async () => true,
+          async () => true,
+          mockOutput() as any,
+        );
+
+        const parent = makeAnnotation({ id: "parent-1" });
+        const result = await manager.createReply(parent, "My reply");
+
+        assert.ok(result);
+        assert.strictEqual(result.id, "reply-1");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("sends replyTo and replying motivation in request body", async () => {
+      let capturedBody: any;
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (_input: string | URL | Request, init?: RequestInit) => {
+        capturedBody = JSON.parse(init?.body as string);
+        return new Response(
+          JSON.stringify(makeAnnotation({ id: "reply-1" })),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        );
+      };
+
+      try {
+        const manager = new AnnotationManager(
+          new AnnotationApiClient(
+            () => "http://test:5000",
+            async () => "token",
+          ),
+          async () => true,
+          async () => true,
+          mockOutput() as any,
+        );
+
+        const parent = makeAnnotation({ id: "parent-1" });
+        await manager.createReply(parent, "Reply text");
+
+        assert.strictEqual(capturedBody.motivation, "replying");
+        assert.strictEqual(capturedBody.replyTo, "parent-1");
+        assert.strictEqual(capturedBody.body.value, "Reply text");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+
+    test("preserves parent target in reply", async () => {
+      let capturedBody: any;
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = async (_input: string | URL | Request, init?: RequestInit) => {
+        capturedBody = JSON.parse(init?.body as string);
+        return new Response(
+          JSON.stringify(makeAnnotation({ id: "reply-1" })),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        );
+      };
+
+      try {
+        const manager = new AnnotationManager(
+          new AnnotationApiClient(
+            () => "http://test:5000",
+            async () => "token",
+          ),
+          async () => true,
+          async () => true,
+          mockOutput() as any,
+        );
+
+        const parent = makeAnnotation({
+          id: "parent-1",
+          targetSource: "http://test:5000/archive/id/draft-foo-01.txt",
+          exact: "selected text",
+          prefix: "pre-",
+          suffix: "-suf",
+        });
+        await manager.createReply(parent, "Reply text");
+
+        assert.strictEqual(
+          capturedBody.target.source,
+          "http://test:5000/archive/id/draft-foo-01.txt",
+        );
+        assert.strictEqual(capturedBody.target.selector.exact, "selected text");
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+    });
+  });
+
   suite("editAnnotationBody", () => {
     test("returns undefined when auth fails", async () => {
       const manager = new AnnotationManager(
