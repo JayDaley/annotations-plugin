@@ -110,4 +110,4 @@ server/
 
 ## License
 
-This project is not yet licensed. All rights reserved.
+BSD 3-Clause License. See [LICENSE](LICENSE).
