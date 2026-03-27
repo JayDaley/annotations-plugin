@@ -360,6 +360,97 @@ suite("AnnotationApiClient", () => {
     }
   });
 
+  test("getAnnotation normalises full URI to bare ID", async () => {
+    let capturedUrl = "";
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (input: string | URL | Request, _init?: RequestInit) => {
+      capturedUrl = typeof input === "string" ? input : input.toString();
+      return new Response(
+        JSON.stringify({ id: "uuid-1", type: "Annotation" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    try {
+      const client = new AnnotationApiClient(
+        () => "http://test-server:5000",
+        async () => undefined,
+      );
+
+      await client.getAnnotation("http://test-server:5000/api/annotations/uuid-1");
+
+      assert.ok(
+        capturedUrl.endsWith("/api/annotations/uuid-1"),
+        `Should use bare UUID in path, got: ${capturedUrl}`,
+      );
+      assert.ok(
+        !capturedUrl.includes("/api/annotations/http"),
+        "Should not nest the full URI in the path",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("deleteAnnotation normalises full URI to bare ID", async () => {
+    let capturedUrl = "";
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (input: string | URL | Request, _init?: RequestInit) => {
+      capturedUrl = typeof input === "string" ? input : input.toString();
+      return new Response(null, { status: 204 });
+    };
+
+    try {
+      const client = new AnnotationApiClient(
+        () => "http://test-server:5000",
+        async () => "token",
+      );
+
+      await client.deleteAnnotation("http://test-server:5000/api/annotations/uuid-2");
+
+      assert.ok(
+        capturedUrl.endsWith("/api/annotations/uuid-2"),
+        `Should use bare UUID in path, got: ${capturedUrl}`,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("updateStatus normalises full URI to bare ID", async () => {
+    let capturedUrl = "";
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (input: string | URL | Request, _init?: RequestInit) => {
+      capturedUrl = typeof input === "string" ? input : input.toString();
+      return new Response(
+        JSON.stringify({ id: "uuid-3", type: "Annotation" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    };
+
+    try {
+      const client = new AnnotationApiClient(
+        () => "http://test-server:5000",
+        async () => "token",
+      );
+
+      await client.updateStatus(
+        "http://test-server:5000/api/annotations/uuid-3",
+        "resolved",
+      );
+
+      assert.ok(
+        capturedUrl.endsWith("/api/annotations/uuid-3/status"),
+        `Should use bare UUID in path, got: ${capturedUrl}`,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("handles 204 No Content response", async () => {
     const originalFetch = globalThis.fetch;
 

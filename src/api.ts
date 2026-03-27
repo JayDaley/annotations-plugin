@@ -28,6 +28,15 @@ export class AnnotationApiClient {
     private getToken: () => Promise<string | undefined>,
   ) {}
 
+  /**
+   * Extract the bare UUID from an annotation identifier that may be
+   * either a full URI (`http://…/api/annotations/<uuid>`) or already a
+   * bare UUID string.
+   */
+  private normaliseId(id: string): string {
+    return id.includes("/") ? id.split("/").pop()! : id;
+  }
+
   private async request<T>(
     method: string,
     path: string,
@@ -117,7 +126,7 @@ export class AnnotationApiClient {
   }
 
   getAnnotation(id: string): Promise<W3CAnnotation> {
-    return this.request("GET", `/api/annotations/${id}`);
+    return this.request("GET", `/api/annotations/${this.normaliseId(id)}`);
   }
 
   createAnnotation(annotation: CreateAnnotationRequest): Promise<W3CAnnotation> {
@@ -128,30 +137,27 @@ export class AnnotationApiClient {
     id: string,
     annotation: CreateAnnotationRequest,
   ): Promise<W3CAnnotation> {
-    return this.request("PUT", `/api/annotations/${id}`, annotation, true);
+    return this.request("PUT", `/api/annotations/${this.normaliseId(id)}`, annotation, true);
   }
 
   updateStatus(id: string, status: AnnotationStatus): Promise<W3CAnnotation> {
     return this.request(
       "PATCH",
-      `/api/annotations/${id}/status`,
+      `/api/annotations/${this.normaliseId(id)}/status`,
       { status },
       true,
     );
   }
 
   deleteAnnotation(id: string): Promise<void> {
-    return this.request("DELETE", `/api/annotations/${id}`, undefined, true);
+    return this.request("DELETE", `/api/annotations/${this.normaliseId(id)}`, undefined, true);
   }
 
   getReplies(
     annotationId: string,
     params?: { page?: number; per_page?: number },
   ): Promise<AnnotationListResponse> {
-    // Normalise: strip server URL prefix if a full URI was passed
-    const id = annotationId.includes("/")
-      ? annotationId.split("/").pop()!
-      : annotationId;
+    const id = this.normaliseId(annotationId);
     const qs = new URLSearchParams();
     if (params?.page) { qs.set("page", String(params.page)); }
     if (params?.per_page) { qs.set("per_page", String(params.per_page)); }
