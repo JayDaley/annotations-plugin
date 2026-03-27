@@ -100,11 +100,16 @@ export class IetfAuthenticationProvider
       scopes: [],
     };
 
+    // Track any sessions being replaced so VS Code's internal auth cache
+    // stays in sync.  Without this, getSession(silent:true) may still
+    // return the stale session after a forceNewSession cycle.
+    const removed = this._sessions.filter((s) => s.id !== session.id);
+
     this._sessions = [session];
     await this._persistSessions();
     this._onDidChangeSessions.fire({
       added: [session],
-      removed: [],
+      removed,
       changed: [],
     });
 
@@ -113,7 +118,13 @@ export class IetfAuthenticationProvider
 
   /**
    * Remove a session (called when the user clicks "Sign Out" in the Accounts
-   * menu). Calls the server logout endpoint as a best-effort side-effect.
+   * menu, or when VS Code forces a new session). Calls the server logout
+   * endpoint as a best-effort side-effect.
+   *
+   * Important: this method must NOT call `getToken()` / `getSession()` because
+   * VS Code may be in the middle of a session replacement (`forceNewSession`).
+   * A re-entrant `getSession` call would return stale data.  Instead we send
+   * the token directly from the session being removed.
    *
    * @param sessionId - The `id` of the session to remove.
    */
@@ -123,11 +134,24 @@ export class IetfAuthenticationProvider
       return;
     }
 
-    await this.getClient()
-      .logout()
-      .catch(() => {
-        // best-effort — server token may have already expired
+    // Best-effort server-side logout using the token from the session being
+    // removed — intentionally avoids getToken() which would re-enter the
+    // VS Code auth API.
+    if (session.accessToken) {
+      const serverUrl =
+        vscode.workspace
+          .getConfiguration("ietfAnnotations")
+          .get<string>("serverUrl") ?? "http://localhost:5000";
+      void fetch(`${serverUrl}/api/auth/logout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      }).catch(() => {
+        // best-effort — token may have already expired
       });
+    }
 
     this._sessions = this._sessions.filter((s) => s.id !== sessionId);
     await this._persistSessions();
