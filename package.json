@@ -11,7 +11,7 @@
   ],
   "activationEvents": [
     "onLanguage:plaintext",
-    "onAuthenticationRequest:ietfAnnotations",
+    "onAuthenticationRequest:ietf",
     "onCommand:ietfAnnotations.login",
     "onCommand:ietfAnnotations.logout",
     "onCommand:ietfAnnotations.addAnnotation",
@@ -27,8 +27,8 @@
   "contributes": {
     "authentication": [
       {
-        "id": "ietfAnnotations",
-        "label": "IETF Annotations"
+        "id": "ietf",
+        "label": "IETF Account"
       }
     ],
     "commands": [

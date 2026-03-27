@@ -21,14 +21,15 @@ Annotations follow the [W3C Web Annotation](https://www.w3.org/TR/annotation-mod
 - Unified thread panel — reply to any annotation while viewing the full conversation (parent + all replies) in a single side panel
 - Inline edit and delete of your own annotations and replies directly within the thread panel
 - Reply counts shown in hover tooltips, Explorer tree, and DraftForge sidebar
-- Authentication via the VS Code Accounts icon (bottom-left of the sidebar)
+- OAuth 2.0 authentication with PKCE via the VS Code Accounts icon — uses provider ID `"ietf"` (compatible with DraftForge)
 - Tree view in Explorer grouped by status
 - Annotations panel in the [DraftForge](https://github.com/ietf-tools/draftforge) sidebar listing annotations by quoted text
 - View annotations across all versions of a draft
 
 **Test server**
 - Serves sample Internet-Draft `.txt` files at stable versioned URLs
-- REST API for annotation CRUD with bearer token authentication
+- OAuth 2.0 Authorization Code flow with PKCE (auto-approve user-selection page for testing)
+- REST API for annotation CRUD with OAuth bearer token authentication
 - Threaded reply support with cascade deletes and denormalised reply counts
 - Seeded with three test users, seven top-level annotations, and three replies across three drafts
 
@@ -66,16 +67,8 @@ Open the project folder in VS Code and press `F5` (or `Fn+F5`) to launch the Ext
 1. Start the Flask server
 2. Launch the Extension Development Host (`F5`)
 3. Open one of the sample drafts from `server/drafts/` (e.g. `draft-ietf-foo-bar-03.txt`)
-4. Sign in via the Accounts icon in the bottom-left of the VS Code sidebar
+4. Sign in via the Accounts icon in the bottom-left of the VS Code sidebar — this opens a browser page where you select a test user (alice, bob, or carol)
 5. Select text and right-click to **Add Annotation**, or use the Command Palette
-
-### Test credentials
-
-| Username | Password |
-|----------|----------|
-| alice    | alice123 |
-| bob      | bob123   |
-| carol    | carol123 |
 
 ## Configuration
 
@@ -90,7 +83,7 @@ src/
   extension.ts          Extension entry point and command registration
   types.ts              W3C Annotation TypeScript interfaces
   api.ts                HTTP client for the annotation server
-  auth.ts               VS Code Authentication Provider
+  auth.ts               OAuth 2.0 + PKCE Authentication Provider (provider ID "ietf")
   annotations.ts        Annotation CRUD coordinator (create, edit, delete, reply)
   annotationInput.ts    Multiline input webview panel
   replyThreadPanel.ts   Unified annotation thread panel with inline edit/delete
@@ -101,9 +94,12 @@ src/
 
 server/
   app.py                Flask application factory
-  models.py             SQLAlchemy models (User, Annotation, Token)
+  oauth.py              OAuth 2.0 endpoints (authorize, token, userinfo)
+  auth.py               require_auth decorator and legacy endpoint stubs
+  models.py             SQLAlchemy models (User, Annotation)
   seed.py               Seed data (users and sample annotations)
-  blueprints/           Route handlers (auth, annotations, drafts)
+  annotations.py        Annotation CRUD API
+  documents.py          Draft document serving
   drafts/               Sample Internet-Draft text files
   requirements.txt      Python dependencies
 ```

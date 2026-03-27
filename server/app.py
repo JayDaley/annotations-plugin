@@ -26,10 +26,12 @@ def create_app(config: dict | None = None) -> Flask:
 
     # ------------------------------------------------------------ blueprints
     from auth import auth_bp
+    from oauth import oauth_bp
     from annotations import annotations_bp
     from documents import documents_bp
 
     app.register_blueprint(auth_bp)
+    app.register_blueprint(oauth_bp)
     app.register_blueprint(annotations_bp)
     app.register_blueprint(documents_bp)
 

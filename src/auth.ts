@@ -1,20 +1,25 @@
+import * as crypto from "crypto";
 import * as vscode from "vscode";
-import { AnnotationApiClient } from "./api";
 
-export const PROVIDER_ID = "ietfAnnotations";
-const PROVIDER_LABEL = "IETF Annotations";
-const SESSION_KEY = "ietfAnnotations.sessions";
+export const PROVIDER_ID = "ietf";
+const PROVIDER_LABEL = "IETF Account";
+const SESSION_KEY = "ietf.sessions";
+
+const OAUTH_CLIENT_ID = "ietf-annotations-vscode";
+const AUTH_TIMEOUT_MS = 120_000;
 
 /**
- * VS Code AuthenticationProvider for IETF Annotations.
+ * VS Code AuthenticationProvider for IETF Annotations using OAuth 2.0
+ * with PKCE.
  *
- * Registering this provider surfaces a "IETF Annotations" entry in the
- * Accounts menu (the person icon in the bottom-left of VS Code), giving the
- * user a single, consistent place to sign in and out — no need to run a
- * separate "Login" command.
+ * When the user signs in, the extension opens the test server's authorize
+ * endpoint in the system browser.  The server presents a user-selection
+ * page and redirects back to VS Code via a `vscode://` URI carrying an
+ * authorization code.  The extension exchanges that code (plus PKCE
+ * verifier) for an access token.
  */
 export class IetfAuthenticationProvider
-  implements vscode.AuthenticationProvider, vscode.Disposable
+  implements vscode.AuthenticationProvider, vscode.UriHandler, vscode.Disposable
 {
   private _onDidChangeSessions =
     new vscode.EventEmitter<vscode.AuthenticationProviderAuthenticationSessionsChangeEvent>();
@@ -22,10 +27,26 @@ export class IetfAuthenticationProvider
 
   private _sessions: vscode.AuthenticationSession[] = [];
 
+  /**
+   * Pending OAuth flows keyed by `state`.  Each entry holds the PKCE
+   * code verifier and a promise resolver so that `handleUri` can deliver
+   * the authorization code back to `createSession`.
+   */
+  private _pendingFlows = new Map<
+    string,
+    {
+      codeVerifier: string;
+      resolve: (code: string) => void;
+      reject: (err: Error) => void;
+    }
+  >();
+
   constructor(
     private readonly secrets: vscode.SecretStorage,
-    private readonly getClient: () => AnnotationApiClient,
+    private readonly getServerUrl: () => string,
   ) {}
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────
 
   /**
    * Load persisted sessions from secret storage.
@@ -43,11 +64,17 @@ export class IetfAuthenticationProvider
     }
   }
 
-  /**
-   * Return all stored sessions.
-   * VS Code calls this to populate the Accounts menu and resolve
-   * `vscode.authentication.getSession` calls from anywhere in the extension.
-   */
+  dispose(): void {
+    this._onDidChangeSessions.dispose();
+    // Reject any in-flight OAuth flows.
+    for (const flow of this._pendingFlows.values()) {
+      flow.reject(new Error("Auth provider disposed"));
+    }
+    this._pendingFlows.clear();
+  }
+
+  // ── AuthenticationProvider ─────────────────────────────────────────────
+
   async getSessions(
     _scopes?: readonly string[],
   ): Promise<vscode.AuthenticationSession[]> {
@@ -55,55 +82,110 @@ export class IetfAuthenticationProvider
   }
 
   /**
-   * Prompt the user for credentials, call the annotation server, and store
-   * the resulting session so VS Code shows the account in the Accounts menu.
+   * Start the OAuth 2.0 + PKCE flow.
    *
-   * @throws if the user cancels or the server rejects the credentials.
+   * 1. Generate state + PKCE code verifier / challenge.
+   * 2. Open the authorize endpoint in the system browser.
+   * 3. Wait for the URI handler to deliver the auth code.
+   * 4. Exchange the code for an access token.
+   * 5. Fetch `/api/openid/userinfo` to populate the account label.
    */
   async createSession(
     _scopes: readonly string[],
   ): Promise<vscode.AuthenticationSession> {
-    const username = await vscode.window.showInputBox({
-      title: `${PROVIDER_LABEL} — Sign In`,
-      prompt: "Username",
-      placeHolder: "Enter your username",
-      ignoreFocusOut: true,
-    });
-    if (!username) {
-      throw new Error("Sign-in cancelled");
-    }
+    const serverUrl = this.getServerUrl();
+    const state = crypto.randomUUID();
+    const codeVerifier = generateCodeVerifier();
+    const codeChallenge = generateCodeChallenge(codeVerifier);
 
-    const password = await vscode.window.showInputBox({
-      title: `${PROVIDER_LABEL} — Sign In`,
-      prompt: "Password",
-      password: true,
-      placeHolder: "Enter your password",
-      ignoreFocusOut: true,
-    });
-    if (!password) {
-      throw new Error("Sign-in cancelled");
-    }
+    // The redirect URI must match what VS Code's URI handler listens on.
+    const extensionId = "undefined_publisher.ietf-annotations";
+    const redirectUri = `${vscode.env.uriScheme}://${extensionId}/auth-callback`;
 
-    let result: { token: string; expires: string };
+    const authorizeUrl =
+      `${serverUrl}/api/openid/authorize` +
+      `?client_id=${OAUTH_CLIENT_ID}` +
+      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&response_type=code` +
+      `&scope=${encodeURIComponent("openid profile")}` +
+      `&state=${state}` +
+      `&code_challenge=${codeChallenge}` +
+      `&code_challenge_method=S256`;
+
+    // Set up a promise that resolves when the URI handler delivers the code.
+    const codePromise = new Promise<string>((resolve, reject) => {
+      this._pendingFlows.set(state, { codeVerifier, resolve, reject });
+    });
+
+    // Open the browser.
+    await vscode.env.openExternal(vscode.Uri.parse(authorizeUrl));
+
+    // Wait for the callback with a timeout.
+    let authCode: string;
     try {
-      result = await this.getClient().login(username, password);
-    } catch (err) {
+      authCode = await Promise.race([
+        codePromise,
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(
+            () => reject(new Error("OAuth sign-in timed out")),
+            AUTH_TIMEOUT_MS,
+          ),
+        ),
+      ]);
+    } finally {
+      this._pendingFlows.delete(state);
+    }
+
+    // Exchange the auth code for an access token.
+    const tokenResponse = await fetch(`${serverUrl}/api/openid/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        grant_type: "authorization_code",
+        code: authCode,
+        redirect_uri: redirectUri,
+        client_id: OAUTH_CLIENT_ID,
+        code_verifier: codeVerifier,
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const text = await tokenResponse.text().catch(() => "");
       throw new Error(
-        `Sign-in failed: ${err instanceof Error ? err.message : String(err)}`,
+        `Token exchange failed (${tokenResponse.status}): ${text}`,
       );
     }
 
-    const session: vscode.AuthenticationSession = {
-      id: `ietf-${Date.now()}`,
-      accessToken: result.token,
-      account: { id: username, label: username },
-      scopes: [],
+    const tokenData = (await tokenResponse.json()) as {
+      access_token: string;
+      token_type: string;
+      expires_in: number;
     };
 
-    // Track any sessions being replaced so VS Code's internal auth cache
-    // stays in sync.  Without this, getSession(silent:true) may still
-    // return the stale session after a forceNewSession cycle.
-    const removed = this._sessions.filter((s) => s.id !== session.id);
+    // Fetch user profile so we can populate the account label.
+    const userinfoResponse = await fetch(`${serverUrl}/api/openid/userinfo`, {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    });
+
+    let accountName = "unknown";
+    if (userinfoResponse.ok) {
+      const profile = (await userinfoResponse.json()) as {
+        sub: string;
+        name: string;
+        email: string;
+      };
+      accountName = profile.name;
+    }
+
+    // Build and persist the session.
+    const removed = this._sessions.slice();
+
+    const session: vscode.AuthenticationSession = {
+      id: `ietf-${Date.now()}`,
+      accessToken: tokenData.access_token,
+      account: { id: accountName, label: accountName },
+      scopes: [],
+    };
 
     this._sessions = [session];
     await this._persistSessions();
@@ -116,43 +198,13 @@ export class IetfAuthenticationProvider
     return session;
   }
 
-  /**
-   * Remove a session (called when the user clicks "Sign Out" in the Accounts
-   * menu, or when VS Code forces a new session). Calls the server logout
-   * endpoint as a best-effort side-effect.
-   *
-   * Important: this method must NOT call `getToken()` / `getSession()` because
-   * VS Code may be in the middle of a session replacement (`forceNewSession`).
-   * A re-entrant `getSession` call would return stale data.  Instead we send
-   * the token directly from the session being removed.
-   *
-   * @param sessionId - The `id` of the session to remove.
-   */
   async removeSession(sessionId: string): Promise<void> {
     const session = this._sessions.find((s) => s.id === sessionId);
     if (!session) {
       return;
     }
 
-    // Best-effort server-side logout using the token from the session being
-    // removed — intentionally avoids getToken() which would re-enter the
-    // VS Code auth API.
-    if (session.accessToken) {
-      const serverUrl =
-        vscode.workspace
-          .getConfiguration("ietfAnnotations")
-          .get<string>("serverUrl") ?? "http://localhost:5000";
-      void fetch(`${serverUrl}/api/auth/logout`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.accessToken}`,
-        },
-      }).catch(() => {
-        // best-effort — token may have already expired
-      });
-    }
-
+    // No server-side logout needed — the OAuth access token simply expires.
     this._sessions = this._sessions.filter((s) => s.id !== sessionId);
     await this._persistSessions();
     this._onDidChangeSessions.fire({
@@ -162,11 +214,42 @@ export class IetfAuthenticationProvider
     });
   }
 
+  // ── UriHandler ─────────────────────────────────────────────────────────
+
+  /**
+   * Called by VS Code when the system browser redirects back to
+   * `vscode://undefined_publisher.ietf-annotations/auth-callback?code=...&state=...`
+   */
+  handleUri(uri: vscode.Uri): void {
+    const params = new URLSearchParams(uri.query);
+    const code = params.get("code");
+    const state = params.get("state");
+
+    if (!code || !state) {
+      return;
+    }
+
+    const pending = this._pendingFlows.get(state);
+    if (pending) {
+      pending.resolve(code);
+    }
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────
+
   private async _persistSessions(): Promise<void> {
     await this.secrets.store(SESSION_KEY, JSON.stringify(this._sessions));
   }
+}
 
-  dispose(): void {
-    this._onDidChangeSessions.dispose();
-  }
+/* ── PKCE helpers ──────────────────────────────────────────────────────── */
+
+/** Generate a cryptographically random code verifier for PKCE. */
+export function generateCodeVerifier(): string {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+/** Derive the S256 code challenge from a code verifier. */
+export function generateCodeChallenge(verifier: string): string {
+  return crypto.createHash("sha256").update(verifier).digest("base64url");
 }

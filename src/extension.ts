@@ -50,14 +50,24 @@ export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel("IETF Annotations");
   context.subscriptions.push(output);
 
-  // ── Authentication provider ───────────────────────────────────────────────
-  // Declare client first with definite assignment so the provider can close
-  // over it before the client itself is constructed.
-  let client!: AnnotationApiClient;
+  // ── Helper — read server URL from settings ──────────────────────────────
+  function getServerUrl(): string {
+    return (
+      vscode.workspace
+        .getConfiguration("ietfAnnotations")
+        .get<string>("serverUrl") ?? "http://localhost:5000"
+    );
+  }
+
+  // ── Authentication provider (OAuth 2.0 + PKCE) ────────────────────────
   const authProvider = new IetfAuthenticationProvider(
     context.secrets,
-    () => client,
+    getServerUrl,
   );
+
+  // Register the URI handler FIRST — it must be ready before the browser
+  // redirects back with the authorization code.
+  context.subscriptions.push(vscode.window.registerUriHandler(authProvider));
 
   // Load any persisted session before registering, so VS Code sees the
   // existing account immediately on activation.
@@ -65,7 +75,7 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
       vscode.authentication.registerAuthenticationProvider(
         PROVIDER_ID,
-        "IETF Annotations",
+        "IETF Account",
         authProvider,
         { supportsMultipleAccounts: false },
       ),
@@ -75,11 +85,8 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(authProvider);
 
   // ── API client ────────────────────────────────────────────────────────────
-  client = new AnnotationApiClient(
-    () =>
-      vscode.workspace
-        .getConfiguration("ietfAnnotations")
-        .get<string>("serverUrl") ?? "http://localhost:5000",
+  const client = new AnnotationApiClient(
+    getServerUrl,
     async () => {
       const session = await vscode.authentication.getSession(PROVIDER_ID, [], {
         silent: true,

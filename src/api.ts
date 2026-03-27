@@ -99,17 +99,6 @@ export class AnnotationApiClient {
     }
   }
 
-  login(
-    username: string,
-    password: string,
-  ): Promise<{ token: string; expires: string }> {
-    return this.request("POST", "/api/auth/login", { username, password });
-  }
-
-  logout(): Promise<void> {
-    return this.request("POST", "/api/auth/logout", undefined, true);
-  }
-
   getAnnotations(params: {
     target?: string;
     draft?: string;

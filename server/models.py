@@ -18,26 +18,13 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password = db.Column(db.String(200), nullable=False)  # bcrypt hash
+    password = db.Column(db.String(200), nullable=True)  # bcrypt hash (legacy)
     created = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    tokens = db.relationship("Token", backref="user", lazy=True, cascade="all, delete-orphan")
     annotations = db.relationship("Annotation", backref="creator", lazy=True)
 
     def to_dict(self):
         return {"id": self.id, "username": self.username, "email": self.email}
-
-
-class Token(db.Model):
-    __tablename__ = "token"
-
-    token = db.Column(db.String(64), primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
-    created = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    expires = db.Column(db.DateTime, nullable=False)
-
-    def is_expired(self) -> bool:
-        return datetime.now(timezone.utc) > self.expires.replace(tzinfo=timezone.utc)
 
 
 class Annotation(db.Model):
