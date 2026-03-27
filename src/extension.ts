@@ -8,7 +8,7 @@ import { AnnotationHoverProvider } from "./hoverProvider";
 import { AnnotationTreeProvider, TreeViewMode } from "./treeView";
 import { DraftForgeAnnotationTreeProvider } from "./draftForgeTreeView";
 import { showMultilineInput } from "./annotationInput";
-import { showReplyThread } from "./replyThreadPanel";
+import { AnnotationThreadPanel, ThreadPanelMessage } from "./replyThreadPanel";
 import { AnnotationStatus, W3CAnnotation } from "./types";
 
 const DRAFT_PATTERN = /^draft-.+\.txt$/;
@@ -116,6 +116,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const decorationManager = new DecorationManager(context.extensionUri);
   const hoverProvider = new AnnotationHoverProvider(decorationManager);
   const treeProvider = new AnnotationTreeProvider();
+
+  const threadPanel = new AnnotationThreadPanel();
 
   context.subscriptions.push(decorationManager);
 
@@ -492,6 +494,17 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand(
       "ietfAnnotations.replyToAnnotation",
       async (annotationId?: string) => {
+        // Both Reply and Show Thread now open the unified thread panel.
+        await vscode.commands.executeCommand(
+          "ietfAnnotations.showReplyThread",
+          annotationId,
+        );
+      },
+    ),
+
+    vscode.commands.registerCommand(
+      "ietfAnnotations.showReplyThread",
+      async (annotationId?: string) => {
         const editor = vscode.window.activeTextEditor;
         if (!editor || !isDraftFile(editor.document)) {
           return;
@@ -521,7 +534,7 @@ export function activate(context: vscode.ExtensionContext): void {
                 label: `${a.creator.name}: ${a.body.value.slice(0, 50)}`,
                 annotation: a,
               })),
-              { placeHolder: "Select annotation to reply to" },
+              { placeHolder: "Select annotation" },
             );
             annotation = pick?.annotation;
           }
@@ -531,69 +544,107 @@ export function activate(context: vscode.ExtensionContext): void {
           return;
         }
 
-        const replyText = await showMultilineInput(
-          "Reply to Annotation",
-          "Enter your reply…",
-        );
-        if (replyText === undefined) {
-          return;
-        }
+        const parentAnnotation = annotation;
 
-        const result = await annotationManager.createReply(
-          annotation,
-          replyText,
-        );
-        if (result) {
-          vscode.window.setStatusBarMessage("Reply posted.", 3000);
-          await refresh();
-        }
-      },
-    ),
-
-    vscode.commands.registerCommand(
-      "ietfAnnotations.showReplyThread",
-      async (annotationId?: string) => {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor || !isDraftFile(editor.document)) {
-          return;
-        }
-
-        let annotation: W3CAnnotation | undefined;
-
-        if (annotationId) {
-          for (const anns of decorationManager.lineAnnotations.values()) {
-            annotation = anns.find((a) => a.id === annotationId);
-            if (annotation) {
-              break;
-            }
-          }
-        }
-
-        if (!annotation) {
-          return;
-        }
-
-        const session = await vscode.authentication.getSession(
-          PROVIDER_ID,
-          [],
-          { silent: true },
-        );
-        const currentUser = session?.account.label ?? "";
-
-        const response = await client.getReplies(annotation.id);
-        const replies = response.annotations;
-
-        const msg = await showReplyThread(annotation, replies, currentUser);
-        if (msg?.type === "reply" && msg.value) {
-          const result = await annotationManager.createReply(
-            annotation,
-            msg.value,
+        /** Fetch current user and replies, then open / refresh the panel. */
+        async function openOrRefreshPanel(): Promise<void> {
+          const session = await vscode.authentication.getSession(
+            PROVIDER_ID,
+            [],
+            { silent: true },
           );
-          if (result) {
-            vscode.window.setStatusBarMessage("Reply posted.", 3000);
-            await refresh();
+          const currentUser = session?.account.label ?? "";
+
+          let latestParent: W3CAnnotation;
+          try {
+            latestParent = await client.getAnnotation(parentAnnotation.id);
+          } catch {
+            // Parent may have been deleted by the user from inside the panel.
+            threadPanel.dispose();
+            return;
+          }
+
+          const response = await client.getReplies(parentAnnotation.id);
+          const replies = response.annotations;
+
+          if (threadPanel.isOpen) {
+            threadPanel.update(latestParent, replies, currentUser);
+          } else {
+            threadPanel.show(
+              latestParent,
+              replies,
+              currentUser,
+              async (msg: ThreadPanelMessage) => {
+                if (msg.type === "reply" && msg.value) {
+                  const result = await annotationManager.createReply(
+                    latestParent,
+                    msg.value,
+                  );
+                  if (result) {
+                    vscode.window.setStatusBarMessage("Reply posted.", 3000);
+                    await openOrRefreshPanel();
+                    await refresh();
+                  }
+                  return true;
+                }
+
+                if (msg.type === "edit" && msg.value) {
+                  // Find the annotation to edit — could be parent or a reply.
+                  let target: W3CAnnotation | undefined;
+                  if (msg.annotationId === parentAnnotation.id) {
+                    target = latestParent;
+                  } else {
+                    target = replies.find((r) => r.id === msg.annotationId);
+                  }
+                  if (!target) {
+                    return false;
+                  }
+                  const result = await annotationManager.editAnnotationBody(
+                    target,
+                    msg.value,
+                  );
+                  if (result) {
+                    vscode.window.setStatusBarMessage(
+                      "Annotation updated.",
+                      3000,
+                    );
+                    await openOrRefreshPanel();
+                    await refresh();
+                  }
+                  return true;
+                }
+
+                if (msg.type === "delete") {
+                  const confirm = await vscode.window.showWarningMessage(
+                    "Delete this annotation? This cannot be undone.",
+                    { modal: true },
+                    "Confirm",
+                  );
+                  if (confirm !== "Confirm") {
+                    return false;
+                  }
+                  const success = await annotationManager.deleteAnnotation(
+                    msg.annotationId,
+                  );
+                  if (success) {
+                    if (msg.annotationId === parentAnnotation.id) {
+                      // Parent was deleted — close the panel.
+                      threadPanel.dispose();
+                    } else {
+                      await openOrRefreshPanel();
+                    }
+                    await refresh();
+                  }
+                  return true;
+                }
+
+                return false;
+              },
+            );
           }
         }
+
+        await openOrRefreshPanel();
       },
     ),
   );

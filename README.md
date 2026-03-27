@@ -18,7 +18,8 @@ Annotations follow the [W3C Web Annotation](https://www.w3.org/TR/annotation-mod
 - Light-green background highlighting on all annotated text spans
 - Gutter icons indicating annotation status (open/resolved)
 - Hover popup with annotation body, status toggle, reply, edit, and delete actions
-- Threaded replies — reply to any annotation, view reply threads in a side panel
+- Unified thread panel — reply to any annotation while viewing the full conversation (parent + all replies) in a single side panel
+- Inline edit and delete of your own annotations and replies directly within the thread panel
 - Reply counts shown in hover tooltips, Explorer tree, and DraftForge sidebar
 - Authentication via the VS Code Accounts icon (bottom-left of the sidebar)
 - Tree view in Explorer grouped by status
@@ -92,7 +93,7 @@ src/
   auth.ts               VS Code Authentication Provider
   annotations.ts        Annotation CRUD coordinator (create, edit, delete, reply)
   annotationInput.ts    Multiline input webview panel
-  replyThreadPanel.ts   Reply thread webview panel (side-by-side)
+  replyThreadPanel.ts   Unified annotation thread panel with inline edit/delete
   decorations.ts        Gutter icons and text highlighting
   hoverProvider.ts      Hover tooltip with actions
   treeView.ts           Explorer tree view (grouped by status)
