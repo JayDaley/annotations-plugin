@@ -49,10 +49,6 @@ export class AnnotationHoverProvider implements vscode.HoverProvider {
       // ── Action line ────────────────────────────────────────────────────────
       const isOpen = ann.status === "open";
 
-      const statusLabel = isOpen
-        ? `<span style="color:#f0c040;">**Open**</span>`
-        : `<span style="color:#40c040;">**Resolved**</span>`;
-
       const toggleStatus = isOpen ? "resolved" : "open";
       const toggleLabel = isOpen ? "Resolve" : "Re-open";
       const toggleArgs = encodeURIComponent(
@@ -62,7 +58,7 @@ export class AnnotationHoverProvider implements vscode.HoverProvider {
 
       const actionParts = [
         `**${ann.creator.name}**`,
-        `${statusLabel} · ${toggleLink}`,
+        toggleLink,
       ];
 
       // Reply count — clickable to open the thread panel

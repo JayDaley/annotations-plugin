@@ -15,7 +15,7 @@ def create_app(config: dict | None = None) -> Flask:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{os.path.join(base_dir, 'annotations.db')}"
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-    app.config["BASE_URL"] = os.environ.get("BASE_URL", "http://localhost:5000")
+    app.config["BASE_URL"] = os.environ.get("BASE_URL", "http://localhost:5001")
     app.config["DRAFTS_DIR"] = os.path.join(base_dir, "drafts")
 
     if config:
@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="IETF Annotation Test Server")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument("--port", type=int, default=5001)
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
 

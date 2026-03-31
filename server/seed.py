@@ -18,7 +18,7 @@ import bcrypt
 # Seed constants
 # ---------------------------------------------------------------------------
 
-BASE_URL = "http://localhost:5000"
+BASE_URL = "http://localhost:5001"
 
 URL_FOO_BAR_02 = f"{BASE_URL}/archive/id/draft-ietf-foo-bar-02.txt"
 URL_FOO_BAR_03 = f"{BASE_URL}/archive/id/draft-ietf-foo-bar-03.txt"

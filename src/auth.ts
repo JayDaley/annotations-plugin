@@ -1,3 +1,4 @@
+import { execFile } from "child_process";
 import * as crypto from "crypto";
 import * as vscode from "vscode";
 
@@ -44,6 +45,7 @@ export class IetfAuthenticationProvider
   constructor(
     private readonly secrets: vscode.SecretStorage,
     private readonly getServerUrl: () => string,
+    private readonly output?: vscode.OutputChannel,
   ) {}
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
@@ -102,23 +104,37 @@ export class IetfAuthenticationProvider
     const extensionId = "undefined_publisher.ietf-annotations";
     const redirectUri = `${vscode.env.uriScheme}://${extensionId}/auth-callback`;
 
-    const authorizeUrl =
-      `${serverUrl}/api/openid/authorize` +
-      `?client_id=${OAUTH_CLIENT_ID}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&response_type=code` +
-      `&scope=${encodeURIComponent("openid profile")}` +
-      `&state=${state}` +
-      `&code_challenge=${codeChallenge}` +
-      `&code_challenge_method=S256`;
+    // Build the full authorize URL as a plain string so we have full
+    // control over encoding.  Each value is individually percent-encoded.
+    const qs = [
+      `client_id=${encodeURIComponent(OAUTH_CLIENT_ID)}`,
+      `redirect_uri=${encodeURIComponent(redirectUri)}`,
+      `response_type=code`,
+      `scope=${encodeURIComponent("openid profile")}`,
+      `state=${encodeURIComponent(state)}`,
+      `code_challenge=${encodeURIComponent(codeChallenge)}`,
+      `code_challenge_method=S256`,
+    ].join("&");
 
-    // Set up a promise that resolves when the URI handler delivers the code.
+    const authorizeUrl = `${serverUrl}/api/openid/authorize?${qs}`;
+    this.output?.appendLine(`[OAuth] authorize URL: ${authorizeUrl}`);
+
+    // Register the pending flow BEFORE opening the browser so handleUri
+    // can never arrive before we're ready to receive the code.
     const codePromise = new Promise<string>((resolve, reject) => {
       this._pendingFlows.set(state, { codeVerifier, resolve, reject });
     });
 
-    // Open the browser.
-    await vscode.env.openExternal(vscode.Uri.parse(authorizeUrl));
+    // vscode.Uri.parse() decodes percent-encoded query values internally,
+    // then openExternal() passes the decoded URL to the OS which breaks on
+    // spaces and special chars.  Open via execFile to preserve encoding.
+    try {
+      await openUrlInBrowser(authorizeUrl);
+      this.output?.appendLine(`[OAuth] opened browser`);
+    } catch (err) {
+      this._pendingFlows.delete(state);
+      throw new Error(`Failed to open browser: ${err}`);
+    }
 
     // Wait for the callback with a timeout.
     let authCode: string;
@@ -221,17 +237,23 @@ export class IetfAuthenticationProvider
    * `vscode://undefined_publisher.ietf-annotations/auth-callback?code=...&state=...`
    */
   handleUri(uri: vscode.Uri): void {
+    this.output?.appendLine(`[OAuth] handleUri called: ${uri.toString()}`);
+
     const params = new URLSearchParams(uri.query);
     const code = params.get("code");
     const state = params.get("state");
 
     if (!code || !state) {
+      this.output?.appendLine(`[OAuth] handleUri: missing code or state`);
       return;
     }
 
     const pending = this._pendingFlows.get(state);
     if (pending) {
+      this.output?.appendLine(`[OAuth] handleUri: matched pending flow, resolving`);
       pending.resolve(code);
+    } else {
+      this.output?.appendLine(`[OAuth] handleUri: no matching pending flow for state=${state}`);
     }
   }
 
@@ -240,6 +262,39 @@ export class IetfAuthenticationProvider
   private async _persistSessions(): Promise<void> {
     await this.secrets.store(SESSION_KEY, JSON.stringify(this._sessions));
   }
+}
+
+/* ── Browser opener ───────────────────────────────────────────────────── */
+
+/**
+ * Open a URL in the system's default browser without going through
+ * vscode.Uri, which mangles query-string encoding.
+ */
+function openUrlInBrowser(url: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const platform = process.platform;
+    let cmd: string;
+    let args: string[];
+
+    if (platform === "darwin") {
+      cmd = "open";
+      args = [url];
+    } else if (platform === "win32") {
+      cmd = "cmd";
+      args = ["/c", "start", "", url];
+    } else {
+      cmd = "xdg-open";
+      args = [url];
+    }
+
+    execFile(cmd, args, (err) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    });
+  });
 }
 
 /* ── PKCE helpers ──────────────────────────────────────────────────────── */

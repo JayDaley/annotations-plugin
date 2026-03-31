@@ -1,8 +1,14 @@
 import * as vscode from "vscode";
 
+/** The currently-open input panel, if any. Only one may exist at a time. */
+let _activePanel: vscode.WebviewPanel | undefined;
+
 /**
  * Open a floating webview panel with a multiline textarea for composing or
  * editing an annotation body.
+ *
+ * If a panel is already open it is closed first, so there is never more than
+ * one annotation input window at a time.
  *
  * Resolves with the trimmed text the user submitted, or `undefined` if they
  * cancelled or closed the panel without submitting.
@@ -16,6 +22,12 @@ export function showMultilineInput(
   placeholder = "Enter your annotation…",
   initial = "",
 ): Promise<string | undefined> {
+  // Dismiss any existing input panel before opening a new one.
+  if (_activePanel) {
+    _activePanel.dispose();
+    _activePanel = undefined;
+  }
+
   return new Promise((resolve) => {
     const panel = vscode.window.createWebviewPanel(
       "ietfAnnotationInput",
@@ -24,6 +36,7 @@ export function showMultilineInput(
       { enableScripts: true, retainContextWhenHidden: false },
     );
 
+    _activePanel = panel;
     panel.webview.html = buildHtml(placeholder, initial);
 
     let settled = false;
@@ -46,6 +59,9 @@ export function showMultilineInput(
     );
 
     panel.onDidDispose(() => {
+      if (_activePanel === panel) {
+        _activePanel = undefined;
+      }
       if (!settled) {
         resolve(undefined);
       }

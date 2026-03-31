@@ -110,7 +110,6 @@ suite("AnnotationHoverProvider", () => {
     assert.ok(hover);
     const md = hover.contents[0] as vscode.MarkdownString;
     assert.ok(md.value.includes("Resolve"), "Should show Resolve action");
-    assert.ok(md.value.includes("Open"), "Should show Open status label");
   });
 
   test("hover shows Re-open action for resolved annotations", async () => {
@@ -127,10 +126,6 @@ suite("AnnotationHoverProvider", () => {
     assert.ok(hover);
     const md = hover.contents[0] as vscode.MarkdownString;
     assert.ok(md.value.includes("Re-open"), "Should show Re-open action");
-    assert.ok(
-      md.value.includes("Resolved"),
-      "Should show Resolved status label",
-    );
   });
 
   test("hover contains changeStatus command link", async () => {

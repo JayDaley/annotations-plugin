@@ -9,7 +9,7 @@ Two-component system for annotating Internet-Draft documents using the W3C Web A
 
 ## Key Facts
 
-- Server runs on `http://localhost:5000`
+- Server runs on `http://localhost:5001`
 - Plugin connects to the server at that URL by default
 - W3C Web Annotation data model used throughout (`http://www.w3.org/ns/anno.jsonld`)
 - SQLite for storage (`server/annotations.db`) — no external database required

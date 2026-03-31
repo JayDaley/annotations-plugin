@@ -17,6 +17,7 @@ import hashlib
 import base64
 import secrets
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
 
 from flask import Blueprint, jsonify, redirect, request
 
@@ -105,20 +106,20 @@ def authorize():
     users = User.query.order_by(User.username).all()
     buttons = ""
     for u in users:
-        approve_url = (
-            f"/api/openid/authorize/approve"
-            f"?username={u.username}"
-            f"&redirect_uri={_esc(redirect_uri)}"
-            f"&code_challenge={_esc(code_challenge)}"
-            f"&state={_esc(state)}"
-            f"&scope={_esc(scope)}"
-        )
+        qs = urlencode({
+            "username": u.username,
+            "redirect_uri": redirect_uri,
+            "code_challenge": code_challenge,
+            "state": state,
+            "scope": scope,
+        })
+        approve_url = f"/api/openid/authorize/approve?{qs}"
         buttons += (
-            f'<a href="{approve_url}" '
+            f'<a href="{_esc(approve_url)}" '
             f'style="display:block;margin:12px 0;padding:10px 20px;'
             f'background:#0066cc;color:#fff;text-decoration:none;'
             f'border-radius:4px;text-align:center;font-size:16px;">'
-            f"Sign in as <strong>{u.username}</strong></a>\n"
+            f"Sign in as <strong>{_esc(u.username)}</strong></a>\n"
         )
 
     html = f"""<!DOCTYPE html>

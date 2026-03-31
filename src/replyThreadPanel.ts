@@ -121,12 +121,6 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function statusBadge(status: string): string {
-  const color = status === "open" ? "#f0c040" : "#40c040";
-  const label = status.charAt(0).toUpperCase() + status.slice(1);
-  return `<span class="status-badge" style="color:${color};">${label}</span>`;
-}
-
 function annotationCard(
   ann: W3CAnnotation,
   currentUser: string,
@@ -146,7 +140,6 @@ function annotationCard(
     <div class="${cssClass}" data-annotation-id="${escapeHtml(ann.id)}">
       <div class="meta">
         <strong>${escapeHtml(ann.creator.name)}</strong>
-        ${statusBadge(ann.status)}
         ${ownerButtons}
       </div>
       <div class="body" data-id="${escapeHtml(ann.id)}">${escapeHtml(ann.body.value).replace(/\n/g, "<br>")}</div>

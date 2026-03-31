@@ -79,8 +79,18 @@
       "properties": {
         "ietfAnnotations.serverUrl": {
           "type": "string",
-          "default": "http://localhost:5000",
+          "default": "http://localhost:5001",
           "description": "Base URL of the IETF annotation server"
+        },
+        "ietfAnnotations.offlineMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Store annotations in a local file instead of on the server. The annotations file is placed next to the draft and named after the draft with the version number removed (e.g. draft-ietf-foo-bar.annotations.json). No sign-in is required in offline mode."
+        },
+        "ietfAnnotations.offlineUsername": {
+          "type": "string",
+          "default": "",
+          "description": "Author name to use for annotations in offline mode. Defaults to the OS user account name when left blank."
         }
       }
     },

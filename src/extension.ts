@@ -10,6 +10,7 @@ import { DraftForgeAnnotationTreeProvider } from "./draftForgeTreeView";
 import { showMultilineInput } from "./annotationInput";
 import { AnnotationThreadPanel, ThreadPanelMessage } from "./replyThreadPanel";
 import { AnnotationStatus, W3CAnnotation } from "./types";
+import { OfflineStore } from "./offlineStore";
 
 const DRAFT_PATTERN = /^draft-.+\.txt$/;
 
@@ -22,17 +23,32 @@ function isDraftFile(document: vscode.TextDocument): boolean {
   return DRAFT_PATTERN.test(path.basename(document.uri.fsPath));
 }
 
+/** Return `true` when offline mode is enabled in settings. */
+function isOfflineMode(): boolean {
+  return (
+    vscode.workspace
+      .getConfiguration("ietfAnnotations")
+      .get<boolean>("offlineMode") ?? false
+  );
+}
+
 /**
- * Build the canonical target URL for a draft document, as stored on the
- * annotation server.
+ * Build the target source identifier for a draft document.
+ *
+ * - Online mode: the canonical server URL for the specific version.
+ * - Offline mode: the local `file://` URI (version-specific, but all versions
+ *   share the same `.annotations.json` file via the store's path logic).
  *
  * @param document - The open draft document.
  */
 function getTargetUrl(document: vscode.TextDocument): string {
+  if (isOfflineMode()) {
+    return document.uri.toString();
+  }
   const serverUrl =
     vscode.workspace
       .getConfiguration("ietfAnnotations")
-      .get<string>("serverUrl") ?? "http://localhost:5000";
+      .get<string>("serverUrl") ?? "http://localhost:5001";
   return `${serverUrl}/archive/id/${path.basename(document.uri.fsPath)}`;
 }
 
@@ -55,7 +71,7 @@ export function activate(context: vscode.ExtensionContext): void {
     return (
       vscode.workspace
         .getConfiguration("ietfAnnotations")
-        .get<string>("serverUrl") ?? "http://localhost:5000"
+        .get<string>("serverUrl") ?? "http://localhost:5001"
     );
   }
 
@@ -63,6 +79,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const authProvider = new IetfAuthenticationProvider(
     context.secrets,
     getServerUrl,
+    output,
   );
 
   // Register the URI handler FIRST — it must be ready before the browser
@@ -114,11 +131,15 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 
   // ── Feature managers ──────────────────────────────────────────────────────
+  const offlineStore = new OfflineStore();
+
   const annotationManager = new AnnotationManager(
     client,
     ensureAuth,
     forceReauth,
     output,
+    offlineStore,
+    isOfflineMode,
   );
   const decorationManager = new DecorationManager(context.extensionUri);
   const hoverProvider = new AnnotationHoverProvider(decorationManager);
@@ -167,15 +188,16 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
+    const targetUrl = getTargetUrl(editor.document);
+
     let annotations: W3CAnnotation[];
     if (mode === "allVersions") {
       annotations = await annotationManager.fetchAnnotationsForDraft(
         getDraftName(editor.document),
+        targetUrl,
       );
     } else {
-      annotations = await annotationManager.fetchAnnotations(
-        getTargetUrl(editor.document),
-      );
+      annotations = await annotationManager.fetchAnnotations(targetUrl);
     }
 
     decorationManager.apply(editor, annotations);
@@ -555,23 +577,35 @@ export function activate(context: vscode.ExtensionContext): void {
 
         /** Fetch current user and replies, then open / refresh the panel. */
         async function openOrRefreshPanel(): Promise<void> {
-          const session = await vscode.authentication.getSession(
-            PROVIDER_ID,
-            [],
-            { silent: true },
-          );
-          const currentUser = session?.account.label ?? "";
+          let currentUser: string;
+          if (isOfflineMode()) {
+            const { offlineUsername } = await import("./offlineStore.js");
+            currentUser = offlineUsername();
+          } else {
+            const session = await vscode.authentication.getSession(
+              PROVIDER_ID,
+              [],
+              { silent: true },
+            );
+            currentUser = session?.account.label ?? "";
+          }
 
           let latestParent: W3CAnnotation;
           try {
-            latestParent = await client.getAnnotation(parentAnnotation.id);
+            latestParent = await annotationManager.getAnnotation(
+              parentAnnotation.id,
+              parentAnnotation.target.source,
+            );
           } catch {
             // Parent may have been deleted by the user from inside the panel.
             threadPanel.dispose();
             return;
           }
 
-          const response = await client.getReplies(parentAnnotation.id);
+          const response = await annotationManager.getReplies(
+            parentAnnotation.id,
+            parentAnnotation.target.source,
+          );
           const replies = response.annotations;
 
           if (threadPanel.isOpen) {

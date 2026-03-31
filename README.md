@@ -51,7 +51,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-The server starts on `http://localhost:5000` and automatically creates the database with seed data on first run.
+The server starts on `http://localhost:5001` and automatically creates the database with seed data on first run.
 
 ### Extension setup
 
@@ -74,7 +74,7 @@ Open the project folder in VS Code and press `F5` (or `Fn+F5`) to launch the Ext
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `ietfAnnotations.serverUrl` | `http://localhost:5000` | Base URL of the annotation server |
+| `ietfAnnotations.serverUrl` | `http://localhost:5001` | Base URL of the annotation server |
 
 ## Project Structure
 
