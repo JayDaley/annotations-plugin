@@ -21,6 +21,7 @@ Annotations follow the [W3C Web Annotation](https://www.w3.org/TR/annotation-mod
 - Unified thread panel — reply to any annotation while viewing the full conversation (parent + all replies) in a single side panel
 - Inline edit and delete of your own annotations and replies directly within the thread panel
 - Reply counts shown in hover tooltips, Explorer tree, and DraftForge sidebar
+- **Offline mode** — store annotations in a local `.annotations.json` file with no server required (see [Offline Mode](#offline-mode))
 - OAuth 2.0 authentication with PKCE via the VS Code Accounts icon — uses provider ID `"ietf"` (compatible with DraftForge)
 - Tree view in Explorer grouped by status
 - Annotations panel in the [DraftForge](https://github.com/ietf-tools/draftforge) sidebar listing annotations by quoted text
@@ -70,11 +71,22 @@ Open the project folder in VS Code and press `F5` (or `Fn+F5`) to launch the Ext
 4. Sign in via the Accounts icon in the bottom-left of the VS Code sidebar — this opens a browser page where you select a test user (alice, bob, or carol)
 5. Select text and right-click to **Add Annotation**, or use the Command Palette
 
+## Offline Mode
+
+When `ietfAnnotations.offlineMode` is enabled the extension works entirely without a server:
+
+- Annotations are stored in a `.annotations.json` file in the same directory as the draft.
+- The file is named after the draft with the version number stripped, so all versions of the same draft share one file. For example, both `draft-ietf-foo-bar-02.txt` and `draft-ietf-foo-bar-03.txt` store their annotations in `draft-ietf-foo-bar.annotations.json`.
+- The author name is taken from the OS username (overridable via `ietfAnnotations.offlineUsername`).
+- No sign-in is required. All annotation operations — create, edit, delete, reply, and status changes — work locally.
+
 ## Configuration
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `ietfAnnotations.serverUrl` | `http://localhost:5001` | Base URL of the annotation server |
+| `ietfAnnotations.serverUrl` | `http://localhost:5001` | Base URL of the annotation server (online mode only) |
+| `ietfAnnotations.offlineMode` | `false` | Store annotations locally; no server or sign-in required |
+| `ietfAnnotations.offlineUsername` | *(OS username)* | Author name used in offline mode |
 
 ## Project Structure
 
@@ -85,6 +97,7 @@ src/
   api.ts                HTTP client for the annotation server
   auth.ts               OAuth 2.0 + PKCE Authentication Provider (provider ID "ietf")
   annotations.ts        Annotation CRUD coordinator (create, edit, delete, reply)
+  offlineStore.ts       Local JSON file storage for offline mode
   annotationInput.ts    Multiline input webview panel
   replyThreadPanel.ts   Unified annotation thread panel with inline edit/delete
   decorations.ts        Gutter icons and text highlighting
